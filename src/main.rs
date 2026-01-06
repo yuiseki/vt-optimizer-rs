@@ -4,6 +4,7 @@ use clap::Parser;
 use tile_prune::cli::{Cli, Command};
 use tile_prune::format::{plan_copy, plan_optimize, resolve_output_path};
 use tile_prune::mbtiles::{copy_mbtiles, inspect_mbtiles};
+use tile_prune::pmtiles::{mbtiles_to_pmtiles, pmtiles_to_mbtiles};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -40,12 +41,20 @@ fn main() -> Result<()> {
             )?;
             let _output_path =
                 resolve_output_path(&args.input, args.output.as_deref(), decision.output);
-            if decision.input != tile_prune::format::TileFormat::Mbtiles
-                || decision.output != tile_prune::format::TileFormat::Mbtiles
-            {
-                anyhow::bail!("v0.0.2 supports only MBTiles for copy");
+            match (decision.input, decision.output) {
+                (tile_prune::format::TileFormat::Mbtiles, tile_prune::format::TileFormat::Mbtiles) => {
+                    copy_mbtiles(&args.input, &_output_path)?;
+                }
+                (tile_prune::format::TileFormat::Mbtiles, tile_prune::format::TileFormat::Pmtiles) => {
+                    mbtiles_to_pmtiles(&args.input, &_output_path)?;
+                }
+                (tile_prune::format::TileFormat::Pmtiles, tile_prune::format::TileFormat::Mbtiles) => {
+                    pmtiles_to_mbtiles(&args.input, &_output_path)?;
+                }
+                (tile_prune::format::TileFormat::Pmtiles, tile_prune::format::TileFormat::Pmtiles) => {
+                    anyhow::bail!("v0.0.3 does not support PMTiles to PMTiles copy");
+                }
             }
-            copy_mbtiles(&args.input, &_output_path)?;
             println!("copy: input={}", args.input.display());
         }
         Command::Verify(args) => {
