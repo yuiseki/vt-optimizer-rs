@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
@@ -23,6 +23,13 @@ impl TileFormat {
             "mbtiles" => Some(TileFormat::Mbtiles),
             "pmtiles" => Some(TileFormat::Pmtiles),
             _ => None,
+        }
+    }
+
+    pub fn extension_str(self) -> &'static str {
+        match self {
+            TileFormat::Mbtiles => "mbtiles",
+            TileFormat::Pmtiles => "pmtiles",
         }
     }
 }
@@ -110,4 +117,21 @@ pub fn plan_optimize(
 ) -> Result<FormatDecision> {
     validate_output_format_matches_path(output_path, output_format)?;
     decide_formats(input_path, output_path, input_format, output_format)
+}
+
+pub fn default_output_path_pruned(input_path: &Path, output_format: TileFormat) -> PathBuf {
+    let file_name = input_path.file_name().and_then(|name| name.to_str());
+    let stem = input_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .or(file_name)
+        .unwrap_or("output");
+
+    let file_name = format!("{stem}.pruned.{}", output_format.extension_str());
+    let mut out = input_path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    out.push(file_name);
+    out
 }

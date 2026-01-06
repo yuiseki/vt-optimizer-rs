@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use tile_prune::format::{decide_formats, plan_copy, plan_optimize, TileFormat};
+use tile_prune::format::{
+    decide_formats, default_output_path_pruned, plan_copy, plan_optimize, TileFormat,
+};
 use tile_prune::format::validate_output_format_matches_path;
 
 #[test]
@@ -187,4 +189,28 @@ fn plan_optimize_rejects_output_conflict() {
 
     let msg = err.to_string();
     assert!(msg.contains("conflicts"));
+}
+
+#[test]
+fn default_output_path_pruned_changes_extension() {
+    let path = default_output_path_pruned(Path::new("planet.mbtiles"), TileFormat::Pmtiles);
+    assert_eq!(path.as_os_str(), "planet.pruned.pmtiles");
+}
+
+#[test]
+fn default_output_path_pruned_same_extension() {
+    let path = default_output_path_pruned(Path::new("planet.pmtiles"), TileFormat::Pmtiles);
+    assert_eq!(path.as_os_str(), "planet.pruned.pmtiles");
+}
+
+#[test]
+fn default_output_path_pruned_without_extension() {
+    let path = default_output_path_pruned(Path::new("planet"), TileFormat::Mbtiles);
+    assert_eq!(path.as_os_str(), "planet.pruned.mbtiles");
+}
+
+#[test]
+fn default_output_path_pruned_preserves_directory() {
+    let path = default_output_path_pruned(Path::new("data/planet.mbtiles"), TileFormat::Mbtiles);
+    assert_eq!(path.as_os_str(), "data/planet.pruned.mbtiles");
 }
