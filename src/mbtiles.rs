@@ -10,6 +10,18 @@ pub struct MbtilesStats {
     pub max_bytes: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MbtilesZoomStats {
+    pub zoom: u8,
+    pub stats: MbtilesStats,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MbtilesReport {
+    pub overall: MbtilesStats,
+    pub by_zoom: Vec<MbtilesZoomStats>,
+}
+
 fn ensure_mbtiles_path(path: &Path) -> Result<()> {
     let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
     if ext.eq_ignore_ascii_case("mbtiles") {
@@ -19,7 +31,7 @@ fn ensure_mbtiles_path(path: &Path) -> Result<()> {
     }
 }
 
-pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesStats> {
+pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesReport> {
     ensure_mbtiles_path(path)?;
     let conn = Connection::open(path).with_context(|| {
         format!("failed to open mbtiles: {}", path.display())
@@ -33,11 +45,35 @@ pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesStats> {
         )
         .context("failed to read tiles stats")?;
 
-    Ok(MbtilesStats {
+    let overall = MbtilesStats {
         tile_count: count,
         total_bytes: total.unwrap_or(0),
         max_bytes: max.unwrap_or(0),
-    })
+    };
+
+    let mut by_zoom = Vec::new();
+    let mut stmt = conn
+        .prepare(
+            "SELECT zoom_level, COUNT(*), SUM(LENGTH(tile_data)), MAX(LENGTH(tile_data)) FROM tiles GROUP BY zoom_level ORDER BY zoom_level",
+        )
+        .context("prepare zoom stats")?;
+    let mut rows = stmt.query([]).context("query zoom stats")?;
+    while let Some(row) = rows.next().context("read zoom stats")? {
+        let zoom: u8 = row.get(0)?;
+        let count: u64 = row.get(1)?;
+        let total: Option<u64> = row.get(2)?;
+        let max: Option<u64> = row.get(3)?;
+        by_zoom.push(MbtilesZoomStats {
+            zoom,
+            stats: MbtilesStats {
+                tile_count: count,
+                total_bytes: total.unwrap_or(0),
+                max_bytes: max.unwrap_or(0),
+            },
+        });
+    }
+
+    Ok(MbtilesReport { overall, by_zoom })
 }
 
 pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {

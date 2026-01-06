@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tile_prune::mbtiles::{copy_mbtiles, inspect_mbtiles, MbtilesStats};
+use tile_prune::mbtiles::{copy_mbtiles, inspect_mbtiles, MbtilesStats, MbtilesZoomStats};
 
 fn create_sample_mbtiles(path: &Path) {
     let conn = rusqlite::Connection::open(path).expect("open");
@@ -44,14 +44,25 @@ fn inspect_mbtiles_reports_minimal_stats() {
     let path = dir.path().join("input.mbtiles");
     create_sample_mbtiles(&path);
 
-    let stats = inspect_mbtiles(&path).expect("inspect");
+    let report = inspect_mbtiles(&path).expect("inspect");
     assert_eq!(
-        stats,
+        report.overall,
         MbtilesStats {
             tile_count: 2,
             total_bytes: 40,
             max_bytes: 30,
         }
+    );
+    assert_eq!(
+        report.by_zoom,
+        vec![MbtilesZoomStats {
+            zoom: 0,
+            stats: MbtilesStats {
+                tile_count: 2,
+                total_bytes: 40,
+                max_bytes: 30,
+            },
+        }]
     );
 }
 
@@ -64,10 +75,10 @@ fn copy_mbtiles_copies_tiles_and_metadata() {
 
     copy_mbtiles(&input, &output).expect("copy");
 
-    let stats = inspect_mbtiles(&output).expect("inspect output");
-    assert_eq!(stats.tile_count, 2);
-    assert_eq!(stats.total_bytes, 40);
-    assert_eq!(stats.max_bytes, 30);
+    let report = inspect_mbtiles(&output).expect("inspect output");
+    assert_eq!(report.overall.tile_count, 2);
+    assert_eq!(report.overall.total_bytes, 40);
+    assert_eq!(report.overall.max_bytes, 30);
 
     let conn = rusqlite::Connection::open(output).expect("open output");
     let value: String = conn

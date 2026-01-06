@@ -12,11 +12,20 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Inspect(args) => {
-            let stats = inspect_mbtiles(&args.input)?;
+            let report = inspect_mbtiles(&args.input)?;
             println!(
                 "tiles: {} total_bytes: {} max_bytes: {}",
-                stats.tile_count, stats.total_bytes, stats.max_bytes
+                report.overall.tile_count, report.overall.total_bytes, report.overall.max_bytes
             );
+            for zoom in report.by_zoom.iter() {
+                println!(
+                    "z={}: tiles={} total_bytes={} max_bytes={}",
+                    zoom.zoom,
+                    zoom.stats.tile_count,
+                    zoom.stats.total_bytes,
+                    zoom.stats.max_bytes
+                );
+            }
         }
         Command::Optimize(args) => {
             let decision = plan_optimize(

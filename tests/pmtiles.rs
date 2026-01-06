@@ -50,8 +50,8 @@ fn mbtiles_to_pmtiles_and_back_preserves_counts() {
     mbtiles_to_pmtiles(&input, &pmtiles).expect("mbtiles->pmtiles");
     pmtiles_to_mbtiles(&pmtiles, &output).expect("pmtiles->mbtiles");
 
-    let stats = inspect_mbtiles(&output).expect("inspect output");
-    assert_eq!(stats.tile_count, 2);
-    assert_eq!(stats.total_bytes, 30);
-    assert_eq!(stats.max_bytes, 20);
+    let report = inspect_mbtiles(&output).expect("inspect output");
+    assert_eq!(report.overall.tile_count, 2);
+    assert_eq!(report.overall.total_bytes, 30);
+    assert_eq!(report.overall.max_bytes, 20);
 }
