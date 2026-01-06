@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use tile_prune::format::{decide_formats, TileFormat};
+use tile_prune::format::{decide_formats, plan_copy, TileFormat};
 use tile_prune::format::validate_output_format_matches_path;
 
 #[test]
@@ -131,4 +131,32 @@ fn validate_output_format_unknown_errors() {
 
     let msg = err.to_string();
     assert!(msg.contains("unknown output format"));
+}
+
+#[test]
+fn plan_copy_uses_decide_formats() {
+    let decision = plan_copy(
+        Path::new("input.pmtiles"),
+        Some(Path::new("out.mbtiles")),
+        None,
+        None,
+    )
+    .expect("decision");
+
+    assert_eq!(decision.input, TileFormat::Pmtiles);
+    assert_eq!(decision.output, TileFormat::Mbtiles);
+}
+
+#[test]
+fn plan_copy_rejects_output_conflict() {
+    let err = plan_copy(
+        Path::new("input.mbtiles"),
+        Some(Path::new("out.pmtiles")),
+        None,
+        Some("mbtiles"),
+    )
+    .expect_err("should error");
+
+    let msg = err.to_string();
+    assert!(msg.contains("conflicts"));
 }

@@ -2,7 +2,7 @@ use anyhow::Result;
 use clap::Parser;
 
 use tile_prune::cli::{Cli, Command};
-use tile_prune::format::validate_output_format_matches_path;
+use tile_prune::format::{plan_copy, validate_output_format_matches_path};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -23,8 +23,10 @@ fn main() -> Result<()> {
             println!("simplify: input={} z={} x={} y={}", args.input.display(), args.z, args.x, args.y);
         }
         Command::Copy(args) => {
-            validate_output_format_matches_path(
+            let _decision = plan_copy(
+                &args.input,
                 args.output.as_deref(),
+                args.input_format.as_deref(),
                 args.output_format.as_deref(),
             )?;
             println!("copy: input={}", args.input.display());
