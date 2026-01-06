@@ -79,3 +79,26 @@ fn copy_mbtiles_copies_tiles_and_metadata() {
         .expect("metadata value");
     assert_eq!(value, "sample");
 }
+
+#[test]
+fn inspect_mbtiles_rejects_non_mbtiles_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("input.pmtiles");
+    create_sample_mbtiles(&path);
+
+    let err = inspect_mbtiles(&path).expect_err("should error");
+    let msg = err.to_string();
+    assert!(msg.contains("mbtiles"));
+}
+
+#[test]
+fn copy_mbtiles_rejects_non_mbtiles_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let input = dir.path().join("input.pmtiles");
+    let output = dir.path().join("output.pmtiles");
+    create_sample_mbtiles(&input);
+
+    let err = copy_mbtiles(&input, &output).expect_err("should error");
+    let msg = err.to_string();
+    assert!(msg.contains("mbtiles"));
+}

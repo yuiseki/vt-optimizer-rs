@@ -10,7 +10,17 @@ pub struct MbtilesStats {
     pub max_bytes: u64,
 }
 
+fn ensure_mbtiles_path(path: &Path) -> Result<()> {
+    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    if ext.eq_ignore_ascii_case("mbtiles") {
+        Ok(())
+    } else {
+        anyhow::bail!("only .mbtiles paths are supported in v0.0.2");
+    }
+}
+
 pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesStats> {
+    ensure_mbtiles_path(path)?;
     let conn = Connection::open(path).with_context(|| {
         format!("failed to open mbtiles: {}", path.display())
     })?;
@@ -31,6 +41,8 @@ pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesStats> {
 }
 
 pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {
+    ensure_mbtiles_path(input)?;
+    ensure_mbtiles_path(output)?;
     let input_conn = Connection::open(input)
         .with_context(|| format!("failed to open input mbtiles: {}", input.display()))?;
     let mut output_conn = Connection::open(output)
