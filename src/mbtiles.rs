@@ -552,8 +552,16 @@ fn build_file_layer_list(
     total_tiles: u64,
     zoom: Option<u8>,
 ) -> Result<Vec<FileLayerSummary>> {
+    let data_expr = tiles_data_expr(conn)?;
+    let source = tiles_source_clause(conn)?;
+    let zoom_col = if source == "tiles" {
+        "zoom_level"
+    } else {
+        "map.zoom_level"
+    };
+    let query = format!("SELECT {zoom_col}, {data_expr} FROM {source}");
     let mut stmt = conn
-        .prepare("SELECT zoom_level, tile_data FROM tiles")
+        .prepare(&query)
         .context("prepare layer list scan")?;
     let mut rows = stmt.query([]).context("query layer list scan")?;
 
@@ -628,9 +636,10 @@ fn build_tile_summary(
     coord: TileCoord,
     layer_filter: Option<&str>,
 ) -> Result<TileSummary> {
+    let query = select_tile_data_query(conn)?;
     let data: Vec<u8> = conn
         .query_row(
-            "SELECT tile_data FROM tiles WHERE zoom_level = ?1 AND tile_column = ?2 AND tile_row = ?3",
+            &query,
             params![coord.zoom, coord.x, coord.y],
             |row| row.get(0),
         )
@@ -818,8 +827,9 @@ fn build_histogram(
         bar.set_message("building histogram");
         bar
     };
+    let query = select_zoom_length_query(&conn)?;
     let mut stmt = conn
-        .prepare("SELECT zoom_level, LENGTH(tile_data) FROM tiles")
+        .prepare(&query)
         .context("prepare histogram scan")?;
     let mut rows = stmt.query([]).context("query histogram scan")?;
 
@@ -943,8 +953,9 @@ fn build_zoom_histograms(
         bar.set_message("building zoom histograms");
         bar
     };
+    let query = select_zoom_length_query(&conn)?;
     let mut stmt = conn
-        .prepare("SELECT zoom_level, LENGTH(tile_data) FROM tiles")
+        .prepare(&query)
         .context("prepare zoom histogram scan")?;
     let mut rows = stmt.query([]).context("query zoom histogram scan")?;
 
@@ -1109,9 +1120,16 @@ fn apply_read_pragmas(conn: &Connection) -> Result<()> {
 }
 
 fn fetch_zoom_counts(conn: &Connection) -> Result<BTreeMap<u8, u64>> {
-    let mut stmt = conn
-        .prepare("SELECT zoom_level, COUNT(*) FROM tiles GROUP BY zoom_level")
-        .context("prepare zoom counts")?;
+    let source = tiles_source_clause(conn)?;
+    let zoom_col = if source == "tiles" {
+        "zoom_level"
+    } else {
+        "map.zoom_level"
+    };
+    let query = format!(
+        "SELECT {zoom_col}, COUNT(*) FROM {source} GROUP BY {zoom_col}",
+    );
+    let mut stmt = conn.prepare(&query).context("prepare zoom counts")?;
     let mut rows = stmt.query([]).context("query zoom counts")?;
     let mut counts = BTreeMap::new();
     while let Some(row) = rows.next().context("read zoom count row")? {
@@ -1167,12 +1185,13 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     };
 
     let total_tiles: u64 = if needs_counting {
+        let query = select_tile_count_query(&conn, options.zoom.is_some())?;
         let count = match options.zoom {
             Some(z) => conn
-                .query_row("SELECT COUNT(*) FROM tiles WHERE zoom_level = ?1", [z], |row| row.get(0))
+                .query_row(&query, [z], |row| row.get(0))
                 .context("failed to read tile count (zoom)")?,
             None => conn
-                .query_row("SELECT COUNT(*) FROM tiles", [], |row| row.get(0))
+                .query_row(&query, [], |row| row.get(0))
                 .context("failed to read tile count")?,
         };
         if let Some(spinner) = spinner {
@@ -1250,13 +1269,9 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
 
     // When sampling and need layer list, fetch tile_data too for layer extraction
     let need_tile_data = collect_layers;
-    let query = if need_tile_data {
-        "SELECT zoom_level, tile_column, tile_row, LENGTH(tile_data), tile_data FROM tiles"
-    } else {
-        "SELECT zoom_level, tile_column, tile_row, LENGTH(tile_data) FROM tiles"
-    };
+    let query = select_tiles_query(&conn, need_tile_data)?;
     let mut stmt = conn
-        .prepare(query)
+        .prepare(&query)
         .context("prepare tiles scan")?;
     let mut rows = stmt.query([]).context("query tiles scan")?;
 
@@ -1605,6 +1620,162 @@ fn read_metadata(conn: &Connection) -> Result<BTreeMap<String, String>> {
     Ok(metadata)
 }
 
+fn tiles_schema_mode(conn: &Connection) -> Result<TilesSchemaMode> {
+    if has_table(conn, "tiles")? || has_view(conn, "tiles")? {
+        return Ok(TilesSchemaMode::Tiles);
+    }
+    if has_table(conn, "map")? && has_table(conn, "images")? {
+        return Ok(TilesSchemaMode::MapImages);
+    }
+    anyhow::bail!("mbtiles missing tiles table or map/images tables");
+}
+
+#[derive(Clone, Copy)]
+enum TilesSchemaMode {
+    Tiles,
+    MapImages,
+}
+
+fn create_output_schema(conn: &Connection, mode: TilesSchemaMode) -> Result<()> {
+    match mode {
+        TilesSchemaMode::Tiles => {
+            conn.execute_batch(
+                "
+                CREATE TABLE metadata (name TEXT, value TEXT);
+                CREATE TABLE tiles (
+                    zoom_level INTEGER,
+                    tile_column INTEGER,
+                    tile_row INTEGER,
+                    tile_data BLOB
+                );
+                ",
+            )
+            .context("failed to create output schema")?;
+        }
+        TilesSchemaMode::MapImages => {
+            conn.execute_batch(
+                "
+                CREATE TABLE metadata (name TEXT, value TEXT);
+                CREATE TABLE map (
+                    zoom_level INTEGER,
+                    tile_column INTEGER,
+                    tile_row INTEGER,
+                    tile_id TEXT
+                );
+                CREATE TABLE images (
+                    tile_id TEXT,
+                    tile_data BLOB
+                );
+                ",
+            )
+            .context("failed to create output schema")?;
+        }
+    }
+    Ok(())
+}
+
+fn has_table(conn: &Connection, name: &str) -> Result<bool> {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+            [name],
+            |row| row.get(0),
+        )
+        .context("check table exists")?;
+    Ok(count > 0)
+}
+
+fn has_view(conn: &Connection, name: &str) -> Result<bool> {
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='view' AND name=?1",
+            [name],
+            |row| row.get(0),
+        )
+        .context("check view exists")?;
+    Ok(count > 0)
+}
+
+fn tiles_source_clause(conn: &Connection) -> Result<&'static str> {
+    if has_table(conn, "tiles")? || has_view(conn, "tiles")? {
+        Ok("tiles")
+    } else if has_table(conn, "map")? && has_table(conn, "images")? {
+        Ok("map JOIN images ON map.tile_id = images.tile_id")
+    } else {
+        anyhow::bail!("mbtiles missing tiles table or map/images tables")
+    }
+}
+
+fn tiles_data_expr(conn: &Connection) -> Result<&'static str> {
+    if has_table(conn, "tiles")? || has_view(conn, "tiles")? {
+        Ok("tile_data")
+    } else {
+        Ok("images.tile_data")
+    }
+}
+
+fn select_tiles_query(conn: &Connection, with_data: bool) -> Result<String> {
+    let source = tiles_source_clause(conn)?;
+    let data_expr = tiles_data_expr(conn)?;
+    let (zoom_col, x_col, y_col) = if source == "tiles" {
+        ("zoom_level", "tile_column", "tile_row")
+    } else {
+        ("map.zoom_level", "map.tile_column", "map.tile_row")
+    };
+    let select = if with_data {
+        format!(
+            "SELECT {zoom_col}, {x_col}, {y_col}, LENGTH({data_expr}), {data_expr} FROM {source}",
+        )
+    } else {
+        format!(
+            "SELECT {zoom_col}, {x_col}, {y_col}, LENGTH({data_expr}) FROM {source}",
+        )
+    };
+    Ok(select)
+}
+
+fn select_tile_data_query(conn: &Connection) -> Result<String> {
+    let source = tiles_source_clause(conn)?;
+    let data_expr = tiles_data_expr(conn)?;
+    let (zoom_col, x_col, y_col) = if source == "tiles" {
+        ("zoom_level", "tile_column", "tile_row")
+    } else {
+        ("map.zoom_level", "map.tile_column", "map.tile_row")
+    };
+    Ok(format!(
+        "SELECT {data_expr} FROM {source} WHERE {zoom_col} = ?1 AND {x_col} = ?2 AND {y_col} = ?3",
+    ))
+}
+
+fn select_zoom_length_query(conn: &Connection) -> Result<String> {
+    let source = tiles_source_clause(conn)?;
+    let data_expr = tiles_data_expr(conn)?;
+    let zoom_col = if source == "tiles" {
+        "zoom_level"
+    } else {
+        "map.zoom_level"
+    };
+    Ok(format!(
+        "SELECT {zoom_col}, LENGTH({data_expr}) FROM {source}",
+    ))
+}
+
+fn select_tile_count_query(conn: &Connection, with_zoom: bool) -> Result<String> {
+    let source = tiles_source_clause(conn)?;
+    let zoom_col = if source == "tiles" {
+        "zoom_level"
+    } else {
+        "map.zoom_level"
+    };
+    if with_zoom {
+        Ok(format!(
+            "SELECT COUNT(*) FROM {source} WHERE {zoom_col} = ?1",
+        ))
+    } else {
+        Ok(format!("SELECT COUNT(*) FROM {source}"))
+    }
+}
+
 pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {
     ensure_mbtiles_path(input)?;
     ensure_mbtiles_path(output)?;
@@ -1612,20 +1783,8 @@ pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {
         .with_context(|| format!("failed to open input mbtiles: {}", input.display()))?;
     let mut output_conn = Connection::open(output)
         .with_context(|| format!("failed to open output mbtiles: {}", output.display()))?;
-
-    output_conn
-        .execute_batch(
-            "
-            CREATE TABLE metadata (name TEXT, value TEXT);
-            CREATE TABLE tiles (
-                zoom_level INTEGER,
-                tile_column INTEGER,
-                tile_row INTEGER,
-                tile_data BLOB
-            );
-            ",
-        )
-        .context("failed to create output schema")?;
+    let schema_mode = tiles_schema_mode(&input_conn)?;
+    create_output_schema(&output_conn, schema_mode)?;
 
     let tx = output_conn.transaction().context("begin output transaction")?;
 
@@ -1645,23 +1804,50 @@ pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {
         }
     }
 
-    {
-        let mut stmt = input_conn
-            .prepare(
-                "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles ORDER BY zoom_level, tile_column, tile_row",
-            )
-            .context("prepare tiles")?;
-        let mut rows = stmt.query([]).context("query tiles")?;
-        while let Some(row) = rows.next().context("read tile row")? {
-            let z: i64 = row.get(0)?;
-            let x: i64 = row.get(1)?;
-            let y: i64 = row.get(2)?;
-            let data: Vec<u8> = row.get(3)?;
-            tx.execute(
-                "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?1, ?2, ?3, ?4)",
-                params![z, x, y, data],
-            )
-            .context("insert tile")?;
+    match schema_mode {
+        TilesSchemaMode::Tiles => {
+            let mut stmt = input_conn
+                .prepare(
+                    "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles ORDER BY zoom_level, tile_column, tile_row",
+                )
+                .context("prepare tiles")?;
+            let mut rows = stmt.query([]).context("query tiles")?;
+            while let Some(row) = rows.next().context("read tile row")? {
+                let z: i64 = row.get(0)?;
+                let x: i64 = row.get(1)?;
+                let y: i64 = row.get(2)?;
+                let data: Vec<u8> = row.get(3)?;
+                tx.execute(
+                    "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?1, ?2, ?3, ?4)",
+                    params![z, x, y, data],
+                )
+                .context("insert tile")?;
+            }
+        }
+        TilesSchemaMode::MapImages => {
+            let mut stmt = input_conn
+                .prepare(
+                    "SELECT map.zoom_level, map.tile_column, map.tile_row, map.tile_id, images.tile_data FROM map JOIN images ON map.tile_id = images.tile_id ORDER BY map.zoom_level, map.tile_column, map.tile_row",
+                )
+                .context("prepare map/images")?;
+            let mut rows = stmt.query([]).context("query map/images")?;
+            while let Some(row) = rows.next().context("read map/images row")? {
+                let z: i64 = row.get(0)?;
+                let x: i64 = row.get(1)?;
+                let y: i64 = row.get(2)?;
+                let tile_id: String = row.get(3)?;
+                let data: Vec<u8> = row.get(4)?;
+                tx.execute(
+                    "INSERT INTO map (zoom_level, tile_column, tile_row, tile_id) VALUES (?1, ?2, ?3, ?4)",
+                    params![z, x, y, tile_id],
+                )
+                .context("insert map row")?;
+                tx.execute(
+                    "INSERT INTO images (tile_id, tile_data) VALUES (?1, ?2)",
+                    params![tile_id, data],
+                )
+                .context("insert image row")?;
+            }
         }
     }
 
@@ -1713,20 +1899,8 @@ pub fn prune_mbtiles_layer_only(
         .with_context(|| format!("failed to open input mbtiles: {}", input.display()))?;
     let mut output_conn = Connection::open(output)
         .with_context(|| format!("failed to open output mbtiles: {}", output.display()))?;
-
-    output_conn
-        .execute_batch(
-            "
-            CREATE TABLE metadata (name TEXT, value TEXT);
-            CREATE TABLE tiles (
-                zoom_level INTEGER,
-                tile_column INTEGER,
-                tile_row INTEGER,
-                tile_data BLOB
-            );
-            ",
-        )
-        .context("failed to create output schema")?;
+    let schema_mode = tiles_schema_mode(&input_conn)?;
+    create_output_schema(&output_conn, schema_mode)?;
 
     let tx = output_conn.transaction().context("begin output transaction")?;
 
@@ -1744,21 +1918,43 @@ pub fn prune_mbtiles_layer_only(
         .context("insert metadata")?;
     }
 
-    let mut stmt = input_conn
-        .prepare(
-            "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles ORDER BY zoom_level, tile_column, tile_row",
-        )
-        .context("prepare tile scan")?;
-    let mut rows = stmt.query([]).context("query tiles")?;
+    let mut tiles: Vec<(u8, u32, u32, Vec<u8>)> = Vec::new();
+    match schema_mode {
+        TilesSchemaMode::Tiles => {
+            let mut stmt = input_conn
+                .prepare(
+                    "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles ORDER BY zoom_level, tile_column, tile_row",
+                )
+                .context("prepare tile scan")?;
+            let mut rows = stmt.query([]).context("query tiles")?;
+            while let Some(row) = rows.next().context("read tile row")? {
+                let zoom: u8 = row.get(0)?;
+                let x: u32 = row.get(1)?;
+                let y: u32 = row.get(2)?;
+                let data: Vec<u8> = row.get(3)?;
+                tiles.push((zoom, x, y, data));
+            }
+        }
+        TilesSchemaMode::MapImages => {
+            let mut stmt = input_conn
+                .prepare(
+                    "SELECT map.zoom_level, map.tile_column, map.tile_row, images.tile_data FROM map JOIN images ON map.tile_id = images.tile_id ORDER BY map.zoom_level, map.tile_column, map.tile_row",
+                )
+                .context("prepare map/images scan")?;
+            let mut rows = stmt.query([]).context("query map/images")?;
+            while let Some(row) = rows.next().context("read map/images row")? {
+                let zoom: u8 = row.get(0)?;
+                let x: u32 = row.get(1)?;
+                let y: u32 = row.get(2)?;
+                let data: Vec<u8> = row.get(3)?;
+                tiles.push((zoom, x, y, data));
+            }
+        }
+    }
 
     let keep_layers = style.source_layers();
     let mut stats = PruneStats::default();
-    while let Some(row) = rows.next().context("read tile row")? {
-        let zoom: u8 = row.get(0)?;
-        let x: u32 = row.get(1)?;
-        let y: u32 = row.get(2)?;
-        let data: Vec<u8> = row.get(3)?;
-
+    for (zoom, x, y, data) in tiles.into_iter() {
         let is_gzip = data.starts_with(&[0x1f, 0x8b]);
         let payload = decode_tile_payload(&data)?;
         let encoded = prune_tile_layers(
@@ -1770,12 +1966,28 @@ pub fn prune_mbtiles_layer_only(
             &mut stats,
         )?;
         let tile_data = encode_tile_payload(&encoded, is_gzip)?;
-
-        tx.execute(
-            "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?1, ?2, ?3, ?4)",
-            (zoom as i64, x as i64, y as i64, tile_data),
-        )
-        .context("insert tile")?;
+        match schema_mode {
+            TilesSchemaMode::Tiles => {
+                tx.execute(
+                    "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?1, ?2, ?3, ?4)",
+                    (zoom as i64, x as i64, y as i64, tile_data),
+                )
+                .context("insert tile")?;
+            }
+            TilesSchemaMode::MapImages => {
+                let tile_id = format!("{}-{}-{}", zoom, x, y);
+                tx.execute(
+                    "INSERT INTO map (zoom_level, tile_column, tile_row, tile_id) VALUES (?1, ?2, ?3, ?4)",
+                    (zoom as i64, x as i64, y as i64, tile_id.clone()),
+                )
+                .context("insert map row")?;
+                tx.execute(
+                    "INSERT INTO images (tile_id, tile_data) VALUES (?1, ?2)",
+                    (tile_id, tile_data),
+                )
+                .context("insert image row")?;
+            }
+        }
     }
 
     tx.commit().context("commit output")?;

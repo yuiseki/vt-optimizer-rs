@@ -4,7 +4,7 @@ use std::path::Path;
 use mvt::{GeomEncoder, GeomType, Tile};
 use mvt_reader::Reader;
 
-use tile_prune::mbtiles::prune_mbtiles_layer_only;
+use tile_prune::mbtiles::{inspect_mbtiles, prune_mbtiles_layer_only};
 use tile_prune::style::read_style;
 
 fn create_layer_tile() -> Vec<u8> {
@@ -58,6 +58,29 @@ fn create_layer_mbtiles(path: &Path) {
     .expect("tile insert");
 }
 
+fn create_layer_mbtiles_map_images(path: &Path) {
+    let conn = rusqlite::Connection::open(path).expect("open");
+    conn.execute_batch(
+        "
+        CREATE TABLE metadata (name TEXT, value TEXT);
+        CREATE TABLE map (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_id TEXT);
+        CREATE TABLE images (tile_id TEXT, tile_data BLOB);
+        ",
+    )
+    .expect("schema");
+
+    let data = create_layer_tile();
+    conn.execute(
+        "INSERT INTO map (zoom_level, tile_column, tile_row, tile_id) VALUES (0, 0, 0, 't1')",
+        [],
+    )
+    .expect("map insert");
+    conn.execute(
+        "INSERT INTO images (tile_id, tile_data) VALUES ('t1', ?1)",
+        (data,),
+    )
+    .expect("image insert");
+}
 #[test]
 fn prune_mbtiles_removes_unlisted_layers() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -89,6 +112,26 @@ fn prune_mbtiles_removes_unlisted_layers() {
     assert_eq!(layers[0].name, "roads");
 }
 
+#[test]
+fn prune_mbtiles_supports_map_images_schema() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let input = dir.path().join("input.mbtiles");
+    let output = dir.path().join("output.mbtiles");
+    let style = dir.path().join("style.json");
+    create_layer_mbtiles_map_images(&input);
+
+    fs::write(
+        &style,
+        r#"{"version":8,"sources":{"osm":{"type":"vector"}},"layers":[{"id":"roads","type":"line","source":"osm","source-layer":"roads","paint":{"line-width":1}}]}"#,
+    )
+    .expect("write style");
+    let style = read_style(&style).expect("read style");
+
+    prune_mbtiles_layer_only(&input, &output, &style, false).expect("prune mbtiles");
+
+    let report = inspect_mbtiles(&output).expect("inspect output");
+    assert_eq!(report.overall.tile_count, 1);
+}
 #[test]
 fn prune_mbtiles_filters_features_by_style() {
     let dir = tempfile::tempdir().expect("tempdir");

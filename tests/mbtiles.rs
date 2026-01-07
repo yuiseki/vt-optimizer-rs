@@ -41,6 +41,41 @@ fn create_sample_mbtiles(path: &Path) {
     .expect("tile2");
 }
 
+fn create_sample_mbtiles_map_images(path: &Path) {
+    let conn = rusqlite::Connection::open(path).expect("open");
+    conn.execute_batch(
+        "
+        CREATE TABLE metadata (name TEXT, value TEXT);
+        CREATE TABLE map (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_id TEXT);
+        CREATE TABLE images (tile_id TEXT, tile_data BLOB);
+        ",
+    )
+    .expect("schema");
+
+    let tile1 = vec![1u8; 10];
+    let tile2 = vec![2u8; 20];
+
+    conn.execute(
+        "INSERT INTO map (zoom_level, tile_column, tile_row, tile_id) VALUES (0, 0, 0, 't1')",
+        [],
+    )
+    .expect("map1");
+    conn.execute(
+        "INSERT INTO images (tile_id, tile_data) VALUES ('t1', ?1)",
+        (tile1,),
+    )
+    .expect("img1");
+    conn.execute(
+        "INSERT INTO map (zoom_level, tile_column, tile_row, tile_id) VALUES (1, 1, 1, 't2')",
+        [],
+    )
+    .expect("map2");
+    conn.execute(
+        "INSERT INTO images (tile_id, tile_data) VALUES ('t2', ?1)",
+        (tile2,),
+    )
+    .expect("img2");
+}
 #[test]
 fn inspect_mbtiles_reports_minimal_stats() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -129,6 +164,35 @@ fn copy_mbtiles_copies_tiles_and_metadata() {
         )
         .expect("metadata value");
     assert_eq!(value, "sample");
+}
+
+#[test]
+fn inspect_mbtiles_supports_map_images_schema() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let input = dir.path().join("input.mbtiles");
+    create_sample_mbtiles_map_images(&input);
+
+    let report = inspect_mbtiles(&input).expect("inspect");
+    assert_eq!(report.overall.tile_count, 2);
+    assert_eq!(report.overall.total_bytes, 30);
+    assert_eq!(report.overall.max_bytes, 20);
+    assert_eq!(report.overall.avg_bytes, 15);
+}
+
+#[test]
+fn copy_mbtiles_supports_map_images_schema() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let input = dir.path().join("input.mbtiles");
+    let output = dir.path().join("output.mbtiles");
+    create_sample_mbtiles_map_images(&input);
+
+    copy_mbtiles(&input, &output).expect("copy");
+
+    let report = inspect_mbtiles(&output).expect("inspect output");
+    assert_eq!(report.overall.tile_count, 2);
+    assert_eq!(report.overall.total_bytes, 30);
+    assert_eq!(report.overall.max_bytes, 20);
+    assert_eq!(report.overall.avg_bytes, 15);
 }
 
 #[test]

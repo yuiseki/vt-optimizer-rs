@@ -502,6 +502,14 @@ v0.0.4 では以下を **含めない**。
 * vt-optimizer 互換モード（filter 無視）を追加
   * `--style-mode vt-compat` で可視 layer のみを判定
 
+---
+
+## 1.58 マイルストーン（v0.0.56）
+
+* MBTiles の map/images スキーマ対応
+  * tiles が無い場合は map/images から読み取る
+  * optimize/copy/inspect で map/images を扱える
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）
