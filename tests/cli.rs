@@ -103,6 +103,10 @@ fn parse_inspect_options() {
         "--output",
         "json",
         "--no-progress",
+        "--zoom",
+        "3",
+        "--bucket",
+        "2",
     ]);
 
     match cli.command {
@@ -113,6 +117,8 @@ fn parse_inspect_options() {
             assert_eq!(args.histogram_buckets, 12);
             assert_eq!(args.output, ReportFormat::Json);
             assert!(args.no_progress);
+            assert_eq!(args.zoom, Some(3));
+            assert_eq!(args.bucket, Some(2));
         }
         _ => panic!("expected inspect command"),
     }

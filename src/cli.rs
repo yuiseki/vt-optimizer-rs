@@ -43,6 +43,12 @@ pub struct InspectArgs {
 
     #[arg(long, default_value_t = false)]
     pub no_progress: bool,
+
+    #[arg(long)]
+    pub zoom: Option<u8>,
+
+    #[arg(long)]
+    pub bucket: Option<usize>,
 }
 
 #[derive(Debug, Args)]
