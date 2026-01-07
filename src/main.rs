@@ -32,9 +32,20 @@ fn main() -> Result<()> {
             if args.layer.is_some() && !args.summary {
                 anyhow::bail!("--layer requires --summary");
             }
+            if args.recommend && args.zoom.is_none() {
+                anyhow::bail!("--recommend requires --zoom");
+            }
+            if args.recommend && args.histogram_buckets == 0 {
+                anyhow::bail!("--recommend requires --histogram-buckets");
+            }
+            let topn = if args.recommend && args.topn.is_none() {
+                Some(5)
+            } else {
+                args.topn
+            };
             let options = InspectOptions {
                 sample,
-                topn: args.topn.unwrap_or(0) as usize,
+                topn: topn.unwrap_or(0) as usize,
                 histogram_buckets: args.histogram_buckets as usize,
                 no_progress: args.no_progress,
                 max_tile_bytes: args.max_tile_bytes,
@@ -43,6 +54,7 @@ fn main() -> Result<()> {
                 tile,
                 summary: args.summary,
                 layer: args.layer.clone(),
+                recommend: args.recommend,
                 list_tiles: if args.list_tiles {
                     Some(TileListOptions {
                         limit: args.limit,
@@ -114,6 +126,17 @@ fn main() -> Result<()> {
                             );
                         }
                     }
+                    if !report.recommended_buckets.is_empty() {
+                        println!(
+                            "recommended_buckets: {}",
+                            report
+                                .recommended_buckets
+                                .iter()
+                                .map(|idx| idx.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",")
+                        );
+                    }
                     if let Some(count) = report.bucket_count {
                         println!("bucket_count: {}", count);
                     }
@@ -133,6 +156,21 @@ fn main() -> Result<()> {
                                 "z={}: x={} y={} bytes={}",
                                 tile.zoom, tile.x, tile.y, tile.bytes
                             );
+                        }
+                    }
+                    if !report.top_tile_summaries.is_empty() {
+                        println!("top_tile_summaries:");
+                        for summary in report.top_tile_summaries.iter() {
+                            println!(
+                                "tile_summary: z={} x={} y={} total_features={}",
+                                summary.zoom, summary.x, summary.y, summary.total_features
+                            );
+                            for layer in summary.layers.iter() {
+                                println!(
+                                    "layer: {} features={} property_keys={}",
+                                    layer.name, layer.feature_count, layer.property_key_count
+                                );
+                            }
                         }
                     }
                     if let Some(summary) = report.tile_summary.as_ref() {

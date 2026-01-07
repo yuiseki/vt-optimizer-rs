@@ -61,6 +61,7 @@ fn inspect_zoom_limits_stats_and_histogram() {
         tile: None,
         summary: false,
         layer: None,
+        recommend: false,
         list_tiles: None,
     };
 

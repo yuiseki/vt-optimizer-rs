@@ -83,6 +83,7 @@ fn inspect_tile_summary_reports_layer_counts() {
         tile: Some(TileCoord { zoom: 3, x: 4, y: 5 }),
         summary: true,
         layer: None,
+        recommend: false,
         list_tiles: None,
     };
 
@@ -122,6 +123,7 @@ fn inspect_tile_summary_decodes_gzip_tiles() {
         tile: Some(TileCoord { zoom: 3, x: 4, y: 5 }),
         summary: true,
         layer: None,
+        recommend: false,
         list_tiles: None,
     };
 
@@ -149,6 +151,7 @@ fn inspect_tile_summary_filters_layer() {
         tile: Some(TileCoord { zoom: 3, x: 4, y: 5 }),
         summary: true,
         layer: Some("roads".to_string()),
+        recommend: false,
         list_tiles: None,
     };
 

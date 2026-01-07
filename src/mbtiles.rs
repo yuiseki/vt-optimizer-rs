@@ -38,6 +38,8 @@ pub struct MbtilesReport {
     pub bucket_count: Option<u64>,
     pub bucket_tiles: Vec<TopTile>,
     pub tile_summary: Option<TileSummary>,
+    pub recommended_buckets: Vec<usize>,
+    pub top_tile_summaries: Vec<TileSummary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -104,6 +106,7 @@ pub struct InspectOptions {
     pub tile: Option<TileCoord>,
     pub summary: bool,
     pub layer: Option<String>,
+    pub recommend: bool,
     pub list_tiles: Option<TileListOptions>,
 }
 
@@ -120,6 +123,7 @@ impl Default for InspectOptions {
             tile: None,
             summary: false,
             layer: None,
+            recommend: false,
             list_tiles: None,
         }
     }
@@ -209,6 +213,60 @@ fn decode_tile_payload(data: &[u8]) -> Result<Vec<u8>> {
     } else {
         Ok(data.to_vec())
     }
+}
+
+fn build_tile_summary(
+    conn: &Connection,
+    coord: TileCoord,
+    layer_filter: Option<&str>,
+) -> Result<TileSummary> {
+    let data: Vec<u8> = conn
+        .query_row(
+            "SELECT tile_data FROM tiles WHERE zoom_level = ?1 AND tile_column = ?2 AND tile_row = ?3",
+            params![coord.zoom, coord.x, coord.y],
+            |row| row.get(0),
+        )
+        .context("failed to read tile data")?;
+    let payload = decode_tile_payload(&data)?;
+    let reader = Reader::new(payload)
+        .map_err(|err| anyhow::anyhow!("decode vector tile: {err}"))?;
+    let layers = reader
+        .get_layer_metadata()
+        .map_err(|err| anyhow::anyhow!("read layer metadata: {err}"))?;
+    let mut total_features = 0usize;
+    let mut summaries = Vec::new();
+    for layer in layers {
+        if let Some(filter) = layer_filter {
+            if layer.name != filter {
+                continue;
+            }
+        }
+        let features = reader
+            .get_features(layer.layer_index)
+            .map_err(|err| anyhow::anyhow!("read layer features: {err}"))?;
+        let mut keys = HashSet::new();
+        for feature in features {
+            if let Some(props) = feature.properties {
+                for key in props.keys() {
+                    keys.insert(key.clone());
+                }
+            }
+        }
+        let feature_count = layer.feature_count;
+        total_features += feature_count;
+        summaries.push(LayerSummary {
+            name: layer.name,
+            feature_count,
+            property_key_count: keys.len(),
+        });
+    }
+    Ok(TileSummary {
+        zoom: coord.zoom,
+        x: coord.x,
+        y: coord.y,
+        total_features,
+        layers: summaries,
+    })
 }
 
 fn include_sample(index: u64, total: u64, spec: Option<&SampleSpec>) -> bool {
@@ -400,53 +458,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         let coord = options
             .tile
             .context("--summary requires --tile z/x/y")?;
-        let data: Vec<u8> = conn
-            .query_row(
-                "SELECT tile_data FROM tiles WHERE zoom_level = ?1 AND tile_column = ?2 AND tile_row = ?3",
-                params![coord.zoom, coord.x, coord.y],
-                |row| row.get(0),
-            )
-            .context("failed to read tile data")?;
-        let payload = decode_tile_payload(&data)?;
-        let reader = Reader::new(payload)
-            .map_err(|err| anyhow::anyhow!("decode vector tile: {err}"))?;
-        let layers = reader
-            .get_layer_metadata()
-            .map_err(|err| anyhow::anyhow!("read layer metadata: {err}"))?;
-        let mut total_features = 0usize;
-        let mut summaries = Vec::new();
-        for layer in layers {
-            if let Some(filter) = options.layer.as_deref() {
-                if layer.name != filter {
-                    continue;
-                }
-            }
-            let features = reader
-                .get_features(layer.layer_index)
-                .map_err(|err| anyhow::anyhow!("read layer features: {err}"))?;
-            let mut keys = HashSet::new();
-            for feature in features {
-                if let Some(props) = feature.properties {
-                    for key in props.keys() {
-                        keys.insert(key.clone());
-                    }
-                }
-            }
-            let feature_count = layer.feature_count;
-            total_features += feature_count;
-            summaries.push(LayerSummary {
-                name: layer.name,
-                feature_count,
-                property_key_count: keys.len(),
-            });
-        }
-        Some(TileSummary {
-            zoom: coord.zoom,
-            x: coord.x,
-            y: coord.y,
-            total_features,
-            layers: summaries,
-        })
+        Some(build_tile_summary(&conn, coord, options.layer.as_deref())?)
     } else {
         None
     };
@@ -636,6 +648,55 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         .bucket
         .and_then(|idx| histogram.get(idx).map(|b| b.count));
 
+    let recommended_buckets = if options.recommend {
+        let mut indices = histogram
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, bucket)| {
+                if bucket.avg_over_limit {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        if indices.is_empty() {
+            indices = histogram
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, bucket)| {
+                    if bucket.avg_near_limit {
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+        }
+        indices
+    } else {
+        Vec::new()
+    };
+
+    let top_tile_summaries = if options.recommend && !top_tiles.is_empty() {
+        top_tiles
+            .iter()
+            .map(|tile| {
+                build_tile_summary(
+                    &conn,
+                    TileCoord {
+                        zoom: tile.zoom,
+                        x: tile.x,
+                        y: tile.y,
+                    },
+                    None,
+                )
+            })
+            .collect::<Result<Vec<_>>>()?
+    } else {
+        Vec::new()
+    };
+
     Ok(MbtilesReport {
         overall,
         by_zoom,
@@ -649,6 +710,8 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         bucket_count,
         bucket_tiles,
         tile_summary,
+        recommended_buckets,
+        top_tile_summaries,
     })
 }
 
