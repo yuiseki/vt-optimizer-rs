@@ -76,6 +76,9 @@ pub struct InspectArgs {
 
     #[arg(long, default_value_t = false)]
     pub ndjson_lite: bool,
+
+    #[arg(long, default_value_t = false)]
+    pub ndjson_compact: bool,
 }
 
 #[derive(Debug, Args)]

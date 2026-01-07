@@ -2,7 +2,7 @@ use tile_prune::mbtiles::{
     HistogramBucket, MbtilesReport, MbtilesStats, MbtilesZoomStats, TileSummary, TopTile,
     ZoomHistogram,
 };
-use tile_prune::output::ndjson_lines;
+use tile_prune::output::{ndjson_lines, NdjsonOptions};
 
 #[test]
 fn ndjson_splits_histograms_and_top_tile_summaries() {
@@ -83,7 +83,14 @@ fn ndjson_splits_histograms_and_top_tile_summaries() {
         ],
     };
 
-    let lines = ndjson_lines(&report, true).expect("ndjson");
+    let lines = ndjson_lines(
+        &report,
+        NdjsonOptions {
+            include_summary: true,
+            compact: false,
+        },
+    )
+    .expect("ndjson");
     let types = lines
         .iter()
         .map(|line| {
@@ -140,7 +147,14 @@ fn ndjson_lite_omits_summary() {
         top_tile_summaries: vec![],
     };
 
-    let lines = ndjson_lines(&report, false).expect("ndjson");
+    let lines = ndjson_lines(
+        &report,
+        NdjsonOptions {
+            include_summary: false,
+            compact: false,
+        },
+    )
+    .expect("ndjson");
     assert!(
         !lines.iter().any(|line| line.contains("\"type\":\"summary\"")),
         "summary line should be omitted"
@@ -181,7 +195,14 @@ fn ndjson_sorts_zoom_histograms_and_recommendations() {
         top_tile_summaries: vec![],
     };
 
-    let lines = ndjson_lines(&report, true).expect("ndjson");
+    let lines = ndjson_lines(
+        &report,
+        NdjsonOptions {
+            include_summary: true,
+            compact: false,
+        },
+    )
+    .expect("ndjson");
     let zooms = lines
         .iter()
         .filter_map(|line| {
@@ -209,4 +230,83 @@ fn ndjson_sorts_zoom_histograms_and_recommendations() {
         .filter_map(|value| value.as_u64())
         .collect::<Vec<_>>();
     assert_eq!(buckets, vec![0, 1, 2]);
+}
+
+#[test]
+fn ndjson_compact_minimizes_payloads() {
+    let report = MbtilesReport {
+        overall: MbtilesStats {
+            tile_count: 1,
+            total_bytes: 10,
+            max_bytes: 10,
+            avg_bytes: 10,
+        },
+        by_zoom: vec![],
+        empty_tiles: 0,
+        empty_ratio: 0.0,
+        sampled: false,
+        sample_total_tiles: 1,
+        sample_used_tiles: 1,
+        histogram: vec![HistogramBucket {
+            min_bytes: 1,
+            max_bytes: 10,
+            count: 1,
+            total_bytes: 10,
+            running_avg_bytes: 10,
+            pct_tiles: 1.0,
+            pct_level_bytes: 1.0,
+            accum_pct_tiles: 1.0,
+            accum_pct_level_bytes: 1.0,
+            avg_near_limit: false,
+            avg_over_limit: false,
+        }],
+        histograms_by_zoom: vec![ZoomHistogram {
+            zoom: 0,
+            buckets: vec![],
+        }],
+        top_tiles: vec![TopTile {
+            zoom: 0,
+            x: 0,
+            y: 0,
+            bytes: 10,
+        }],
+        bucket_count: None,
+        bucket_tiles: vec![TopTile {
+            zoom: 1,
+            x: 1,
+            y: 1,
+            bytes: 5,
+        }],
+        tile_summary: Some(TileSummary {
+            zoom: 2,
+            x: 2,
+            y: 2,
+            total_features: 3,
+            layers: vec![],
+        }),
+        recommended_buckets: vec![],
+        top_tile_summaries: vec![TileSummary {
+            zoom: 3,
+            x: 3,
+            y: 3,
+            total_features: 4,
+            layers: vec![],
+        }],
+    };
+
+    let lines = ndjson_lines(
+        &report,
+        NdjsonOptions {
+            include_summary: false,
+            compact: true,
+        },
+    )
+    .expect("ndjson");
+
+    let has_verbose_histogram = lines.iter().any(|line| line.contains("\"buckets\""));
+    let has_verbose_tile = lines.iter().any(|line| line.contains("\"tile\""));
+    let has_verbose_summary = lines.iter().any(|line| line.contains("\"summary\""));
+    assert!(!has_verbose_histogram);
+    assert!(!has_verbose_tile);
+    assert!(!has_verbose_summary);
 }

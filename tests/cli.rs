@@ -120,6 +120,7 @@ fn parse_inspect_options() {
         "--sort",
         "zxy",
         "--ndjson-lite",
+        "--ndjson-compact",
     ]);
 
     match cli.command {
@@ -141,6 +142,7 @@ fn parse_inspect_options() {
             assert_eq!(args.limit, 20);
             assert_eq!(args.sort, tile_prune::cli::TileSortArg::Zxy);
             assert!(args.ndjson_lite);
+            assert!(args.ndjson_compact);
         }
         _ => panic!("expected inspect command"),
     }
