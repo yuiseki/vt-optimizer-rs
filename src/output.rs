@@ -41,17 +41,21 @@ pub fn ndjson_lines(report: &MbtilesReport) -> Result<Vec<String>> {
     }
 
     if !report.bucket_tiles.is_empty() {
-        lines.push(serde_json::to_string(&json!({
-            "type": "bucket_tiles",
-            "tiles": report.bucket_tiles,
-        }))?);
+        for tile in report.bucket_tiles.iter() {
+            lines.push(serde_json::to_string(&json!({
+                "type": "bucket_tile",
+                "tile": tile,
+            }))?);
+        }
     }
 
     if !report.top_tiles.is_empty() {
-        lines.push(serde_json::to_string(&json!({
-            "type": "top_tiles",
-            "tiles": report.top_tiles,
-        }))?);
+        for tile in report.top_tiles.iter() {
+            lines.push(serde_json::to_string(&json!({
+                "type": "top_tile",
+                "tile": tile,
+            }))?);
+        }
     }
 
     if let Some(summary) = report.tile_summary.as_ref() {

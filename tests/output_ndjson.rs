@@ -57,7 +57,12 @@ fn ndjson_splits_histograms_and_top_tile_summaries() {
             bytes: 10,
         }],
         bucket_count: None,
-        bucket_tiles: vec![],
+        bucket_tiles: vec![TopTile {
+            zoom: 0,
+            x: 1,
+            y: 1,
+            bytes: 5,
+        }],
         tile_summary: None,
         recommended_buckets: vec![0],
         top_tile_summaries: vec![
@@ -91,8 +96,21 @@ fn ndjson_splits_histograms_and_top_tile_summaries() {
         })
         .collect::<Vec<_>>();
 
-    let histogram_by_zoom = types.iter().filter(|t| t == &&"histogram_by_zoom".to_string()).count();
-    let top_tile_summary = types.iter().filter(|t| t == &&"top_tile_summary".to_string()).count();
+    let histogram_by_zoom = types
+        .iter()
+        .filter(|t| t == &&"histogram_by_zoom".to_string())
+        .count();
+    let top_tile_summary = types
+        .iter()
+        .filter(|t| t == &&"top_tile_summary".to_string())
+        .count();
+    let top_tile = types.iter().filter(|t| t == &&"top_tile".to_string()).count();
+    let bucket_tile = types
+        .iter()
+        .filter(|t| t == &&"bucket_tile".to_string())
+        .count();
     assert_eq!(histogram_by_zoom, 2);
     assert_eq!(top_tile_summary, 2);
+    assert_eq!(top_tile, 1);
+    assert_eq!(bucket_tile, 1);
 }
