@@ -495,6 +495,13 @@ v0.0.4 では以下を **含めない**。
   * unknown filter は keep
   * unknown filter のレイヤー別件数を出力
 
+---
+
+## 1.57 マイルストーン（v0.0.55）
+
+* vt-optimizer 互換モード（filter 無視）を追加
+  * `--style-mode vt-compat` で可視 layer のみを判定
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）

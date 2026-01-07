@@ -323,8 +323,11 @@ fn main() -> Result<()> {
                 .context("--style is required for optimize")?;
             if args.style_mode != tile_prune::cli::StyleMode::Layer
                 && args.style_mode != tile_prune::cli::StyleMode::LayerFilter
+                && args.style_mode != tile_prune::cli::StyleMode::VtCompat
             {
-                anyhow::bail!("v0.0.38 only supports --style-mode layer or layer+filter");
+                anyhow::bail!(
+                    "v0.0.55 only supports --style-mode layer, layer+filter, or vt-compat"
+                );
             }
             println!("Prune steps");
             println!("- Parsing style file");

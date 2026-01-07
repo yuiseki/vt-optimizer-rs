@@ -86,6 +86,20 @@ fn parse_optimize_style_modes() {
         }
         _ => panic!("expected optimize command"),
     }
+
+    let cli = Cli::parse_from([
+        "tile-prune",
+        "optimize",
+        "in.mbtiles",
+        "--style-mode",
+        "vt-compat",
+    ]);
+    match cli.command {
+        Command::Optimize(args) => {
+            assert_eq!(args.style_mode, StyleMode::VtCompat);
+        }
+        _ => panic!("expected optimize command"),
+    }
 }
 
 #[test]

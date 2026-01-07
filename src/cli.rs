@@ -183,6 +183,8 @@ pub enum StyleMode {
     Layer,
     #[value(name = "layer+filter")]
     LayerFilter,
+    #[value(name = "vt-compat")]
+    VtCompat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
