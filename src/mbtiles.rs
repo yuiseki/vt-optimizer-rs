@@ -713,6 +713,20 @@ pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesReport> {
 
 pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Result<MbtilesReport> {
     ensure_mbtiles_path(path)?;
+    let spinner = if options.no_progress {
+        None
+    } else {
+        let spinner = ProgressBar::new_spinner();
+        spinner.set_draw_target(ProgressDrawTarget::stderr_with_hz(10));
+        spinner.set_style(
+            ProgressStyle::with_template("{spinner} {msg}")
+                .unwrap()
+                .progress_chars("=>-"),
+        );
+        spinner.set_message("counting tiles");
+        spinner.enable_steady_tick(Duration::from_millis(200));
+        Some(spinner)
+    };
     let conn = open_readonly_mbtiles(path)?;
     apply_read_pragmas(&conn)?;
     let metadata = read_metadata(&conn)?;
@@ -725,6 +739,9 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
             .query_row("SELECT COUNT(*) FROM tiles", [], |row| row.get(0))
             .context("failed to read tile count")?,
     };
+    if let Some(spinner) = spinner {
+        spinner.finish_and_clear();
+    }
 
     let tile_summary = if options.summary {
         let coord = options
