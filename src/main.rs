@@ -94,32 +94,36 @@ fn main() -> Result<()> {
                     }
                 }
                 ReportFormat::Text => {
+                    println!("summary:");
                     println!(
-                        "tiles: {} total: {} max: {} avg: {}",
+                        "  tiles: {} total: {} max: {} avg: {}",
                         report.overall.tile_count,
                         format_bytes(report.overall.total_bytes),
                         format_bytes(report.overall.max_bytes),
                         format_bytes(report.overall.avg_bytes)
                     );
                     println!(
-                        "empty_tiles: {} empty_ratio: {:.4}",
+                        "  empty_tiles: {} empty_ratio: {:.4}",
                         report.empty_tiles, report.empty_ratio
                     );
                     if report.sampled {
                         println!(
-                            "sample: used={} total={}",
+                            "  sample: used={} total={}",
                             report.sample_used_tiles, report.sample_total_tiles
                         );
                     }
-                    for zoom in report.by_zoom.iter() {
-                        println!(
-                            "z={}: tiles={} total={} max={} avg={}",
-                            zoom.zoom,
-                            zoom.stats.tile_count,
-                            format_bytes(zoom.stats.total_bytes),
-                            format_bytes(zoom.stats.max_bytes),
-                            format_bytes(zoom.stats.avg_bytes)
-                        );
+                    if !report.by_zoom.is_empty() {
+                        println!("zoom:");
+                        for zoom in report.by_zoom.iter() {
+                            println!(
+                                "  z={}: tiles={} total={} max={} avg={}",
+                                zoom.zoom,
+                                zoom.stats.tile_count,
+                                format_bytes(zoom.stats.total_bytes),
+                                format_bytes(zoom.stats.max_bytes),
+                                format_bytes(zoom.stats.avg_bytes)
+                            );
+                        }
                     }
                     if !report.histogram.is_empty() {
                         println!("histogram:");
@@ -229,8 +233,9 @@ fn main() -> Result<()> {
                         }
                     }
                     if !report.recommended_buckets.is_empty() {
+                        println!("recommendations:");
                         println!(
-                            "recommended_buckets: {}",
+                            "  buckets: {}",
                             report
                                 .recommended_buckets
                                 .iter()
@@ -240,13 +245,14 @@ fn main() -> Result<()> {
                         );
                     }
                     if let Some(count) = report.bucket_count {
-                        println!("bucket_count: {}", count);
+                        println!("bucket:");
+                        println!("  count: {}", count);
                     }
                     if !report.bucket_tiles.is_empty() {
                         println!("bucket_tiles:");
                         for tile in report.bucket_tiles.iter() {
                             println!(
-                                "z={}: x={} y={} bytes={}",
+                                "  z={}: x={} y={} bytes={}",
                                 tile.zoom, tile.x, tile.y, tile.bytes
                             );
                         }
@@ -255,7 +261,7 @@ fn main() -> Result<()> {
                         println!("top_tiles:");
                         for tile in report.top_tiles.iter() {
                             println!(
-                                "z={}: x={} y={} bytes={}",
+                                "  z={}: x={} y={} bytes={}",
                                 tile.zoom, tile.x, tile.y, tile.bytes
                             );
                         }
@@ -264,29 +270,30 @@ fn main() -> Result<()> {
                         println!("top_tile_summaries:");
                         for summary in report.top_tile_summaries.iter() {
                             println!(
-                                "tile_summary: z={} x={} y={} total_features={}",
+                                "  tile_summary: z={} x={} y={} total_features={}",
                                 summary.zoom, summary.x, summary.y, summary.total_features
                             );
                             for layer in summary.layers.iter() {
                                 println!(
-                                    "layer: {} features={} property_keys={}",
+                                    "  layer: {} features={} property_keys={}",
                                     layer.name, layer.feature_count, layer.property_key_count
                                 );
                             }
                         }
                     }
                     if let Some(summary) = report.tile_summary.as_ref() {
+                        println!("tile_summary:");
                         println!(
-                            "tile_summary: z={} x={} y={} total_features={}",
+                            "  z={} x={} y={} total_features={}",
                             summary.zoom, summary.x, summary.y, summary.total_features
                         );
                         for layer in summary.layers.iter() {
                             println!(
-                                "layer: {} features={} property_keys={}",
+                                "  layer: {} features={} property_keys={}",
                                 layer.name, layer.feature_count, layer.property_key_count
                             );
                             if !layer.property_keys.is_empty() {
-                                println!("  keys: {}", layer.property_keys.join(","));
+                                println!("    keys: {}", layer.property_keys.join(","));
                             }
                         }
                     }
