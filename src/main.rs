@@ -11,7 +11,7 @@ use tile_prune::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,
     format_metadata_section, ndjson_lines, pad_left, pad_right, resolve_output_format,
 };
-use nu_ansi_term::{Color, Style};
+use nu_ansi_term::Color;
 use tile_prune::pmtiles::{inspect_pmtiles_with_options, mbtiles_to_pmtiles, pmtiles_to_mbtiles};
 use tile_prune::style::read_style;
 
@@ -385,7 +385,7 @@ fn init_tracing(level: &str) {
 
 fn emphasize_section_heading(line: &str) -> String {
     if line.starts_with("## ") || line.starts_with("### ") {
-        Style::new().bold().paint(line).to_string()
+        Color::Green.bold().paint(line).to_string()
     } else {
         line.to_string()
     }
