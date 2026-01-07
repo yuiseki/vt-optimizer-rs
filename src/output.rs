@@ -9,7 +9,10 @@ pub struct NdjsonOptions {
     pub compact: bool,
 }
 
-pub fn ndjson_lines(report: &MbtilesReport, options: NdjsonOptions) -> Result<Vec<String>> {
+pub fn ndjson_lines(report: &MbtilesReport, mut options: NdjsonOptions) -> Result<Vec<String>> {
+    if options.compact {
+        options.include_summary = false;
+    }
     let mut lines = Vec::new();
     if options.include_summary {
         lines.push(serde_json::to_string(&json!({

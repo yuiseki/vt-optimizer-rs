@@ -87,7 +87,7 @@ fn main() -> Result<()> {
                 }
                 ReportFormat::Ndjson => {
                     let options = tile_prune::output::NdjsonOptions {
-                        include_summary: !args.ndjson_lite,
+                        include_summary: !args.ndjson_lite && !args.ndjson_compact,
                         compact: args.ndjson_compact,
                     };
                     for line in ndjson_lines(&report, options)? {
