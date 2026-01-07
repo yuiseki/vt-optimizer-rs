@@ -36,6 +36,8 @@ fn format_histogram_table_includes_warning_markers() {
         bucket(10, 20, 1, 5, 5, 0.5, 0.5, 1.0, 1.0, true, false),
     ];
     let lines = format_histogram_table(&buckets);
+    let header = lines.first().expect("missing header");
+    assert!(header.contains("acc%size"));
     assert!(lines.iter().any(|line| line.contains("!! (over)")));
     assert!(lines.iter().any(|line| line.contains("! (near)")));
 }

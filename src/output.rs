@@ -189,7 +189,7 @@ pub fn format_histogram_table(buckets: &[HistogramBucket]) -> Vec<String> {
         .max("avg".len());
     let mut lines = Vec::with_capacity(buckets.len() + 1);
     lines.push(format!(
-        "  {} {} {} {} {} {} {}",
+        "  {} {} {} {} {} {} {} {}",
         pad_right("range", 17),
         pad_left("count", count_width),
         pad_left("bytes", bytes_width),
@@ -197,6 +197,7 @@ pub fn format_histogram_table(buckets: &[HistogramBucket]) -> Vec<String> {
         pad_left("%tiles", 7),
         pad_left("%size", 7),
         pad_left("acc%tiles", 9),
+        pad_left("acc%size", 9),
     ));
     for bucket in buckets.iter() {
         let warn = if bucket.avg_over_limit {
@@ -212,7 +213,7 @@ pub fn format_histogram_table(buckets: &[HistogramBucket]) -> Vec<String> {
             format_bytes(bucket.max_bytes)
         );
         lines.push(format!(
-            "  {} {} {} {} {:>7.2}% {:>7.2}% {:>9.2}% {}",
+            "  {} {} {} {} {:>7.2}% {:>7.2}% {:>9.2}% {:>9.2}% {}",
             pad_right(&range, 17),
             pad_left(&bucket.count.to_string(), count_width),
             pad_left(&format_bytes(bucket.total_bytes), bytes_width),
@@ -220,6 +221,7 @@ pub fn format_histogram_table(buckets: &[HistogramBucket]) -> Vec<String> {
             bucket.pct_tiles * 100.0,
             bucket.pct_level_bytes * 100.0,
             bucket.accum_pct_tiles * 100.0,
+            bucket.accum_pct_level_bytes * 100.0,
             warn
         ));
     }
