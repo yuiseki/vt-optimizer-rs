@@ -2,6 +2,8 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::cli::ReportFormat;
+use std::collections::BTreeMap;
+
 use crate::mbtiles::{HistogramBucket, MbtilesReport, ZoomHistogram};
 
 pub fn resolve_output_format(requested: ReportFormat, ndjson_compact: bool) -> ReportFormat {
@@ -240,6 +242,18 @@ pub fn format_histograms_by_zoom_section(histograms: &[ZoomHistogram]) -> Vec<St
         lines.push(String::new());
         lines.push(format!("### z={}", item.zoom));
         lines.extend(format_histogram_table(&item.buckets));
+    }
+    lines
+}
+
+pub fn format_metadata_section(metadata: &BTreeMap<String, String>) -> Vec<String> {
+    if metadata.is_empty() {
+        return Vec::new();
+    }
+    let mut lines = Vec::with_capacity(metadata.len() + 1);
+    lines.push("## Metadata".to_string());
+    for (name, value) in metadata.iter() {
+        lines.push(format!("- {}: {}", name, value));
     }
     lines
 }

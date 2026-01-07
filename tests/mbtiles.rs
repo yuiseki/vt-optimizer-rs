@@ -48,6 +48,7 @@ fn inspect_mbtiles_reports_minimal_stats() {
     create_sample_mbtiles(&path);
 
     let report = inspect_mbtiles(&path).expect("inspect");
+    assert_eq!(report.metadata.get("name"), Some(&"sample".to_string()));
     assert_eq!(
         report.overall,
         MbtilesStats {
@@ -78,6 +79,30 @@ fn inspect_mbtiles_reports_minimal_stats() {
     assert!(report.histograms_by_zoom.is_empty());
     assert!(report.file_layers.is_empty());
     assert!(report.top_tiles.is_empty());
+}
+
+#[test]
+fn inspect_mbtiles_reports_metadata() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("input.mbtiles");
+    create_sample_mbtiles(&path);
+
+    let conn = rusqlite::Connection::open(&path).expect("open");
+    conn.execute(
+        "INSERT INTO metadata (name, value) VALUES (?1, ?2)",
+        ("format", "pbf"),
+    )
+    .expect("format");
+    conn.execute(
+        "INSERT INTO metadata (name, value) VALUES (?1, ?2)",
+        ("minzoom", "0"),
+    )
+    .expect("minzoom");
+
+    let report = inspect_mbtiles(&path).expect("inspect");
+    assert_eq!(report.metadata.get("name"), Some(&"sample".to_string()));
+    assert_eq!(report.metadata.get("format"), Some(&"pbf".to_string()));
+    assert_eq!(report.metadata.get("minzoom"), Some(&"0".to_string()));
 }
 
 #[test]

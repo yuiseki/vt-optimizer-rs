@@ -1,5 +1,9 @@
+use std::collections::BTreeMap;
+
 use tile_prune::mbtiles::{HistogramBucket, ZoomHistogram};
-use tile_prune::output::{format_histogram_table, format_histograms_by_zoom_section};
+use tile_prune::output::{
+    format_histogram_table, format_histograms_by_zoom_section, format_metadata_section,
+};
 
 fn bucket(
     min_bytes: u64,
@@ -72,4 +76,15 @@ fn format_histograms_by_zoom_section_sorts_and_labels() {
     assert!(header_index < z2_index);
     assert!(z2_index < z5_index);
     assert!(lines.iter().any(|line| line.contains("range")));
+}
+
+#[test]
+fn format_metadata_section_lists_entries() {
+    let mut metadata = BTreeMap::new();
+    metadata.insert("name".to_string(), "sample".to_string());
+    metadata.insert("format".to_string(), "pbf".to_string());
+    let lines = format_metadata_section(&metadata);
+    assert_eq!(lines.first(), Some(&"## Metadata".to_string()));
+    assert!(lines.iter().any(|line| line.contains("- name: sample")));
+    assert!(lines.iter().any(|line| line.contains("- format: pbf")));
 }

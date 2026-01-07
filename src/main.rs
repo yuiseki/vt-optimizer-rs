@@ -8,8 +8,8 @@ use tile_prune::mbtiles::{
     TileListOptions, TileSort,
 };
 use tile_prune::output::{
-    format_bytes, format_histogram_table, format_histograms_by_zoom_section, ndjson_lines,
-    pad_left, pad_right, resolve_output_format,
+    format_bytes, format_histogram_table, format_histograms_by_zoom_section,
+    format_metadata_section, ndjson_lines, pad_left, pad_right, resolve_output_format,
 };
 use tile_prune::pmtiles::{mbtiles_to_pmtiles, pmtiles_to_mbtiles};
 
@@ -102,6 +102,12 @@ fn main() -> Result<()> {
                         args.input.display()
                     );
                     println!();
+                    if !report.metadata.is_empty() {
+                        for line in format_metadata_section(&report.metadata) {
+                            println!("{}", line);
+                        }
+                        println!();
+                    }
                     println!("## Summary");
                     println!(
                         "- tiles: {} total: {} max: {} avg: {}",

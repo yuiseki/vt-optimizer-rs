@@ -26,6 +26,7 @@ pub struct MbtilesZoomStats {
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MbtilesReport {
+    pub metadata: BTreeMap<String, String>,
     pub overall: MbtilesStats,
     pub by_zoom: Vec<MbtilesZoomStats>,
     pub empty_tiles: u64,
@@ -712,6 +713,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     ensure_mbtiles_path(path)?;
     let conn = open_readonly_mbtiles(path)?;
     apply_read_pragmas(&conn)?;
+    let metadata = read_metadata(&conn)?;
 
     let total_tiles: u64 = match options.zoom {
         Some(z) => conn
@@ -991,6 +993,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     };
 
     Ok(MbtilesReport {
+        metadata,
         overall,
         by_zoom,
         empty_tiles,
@@ -1008,6 +1011,26 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         recommended_buckets,
         top_tile_summaries,
     })
+}
+
+fn read_metadata(conn: &Connection) -> Result<BTreeMap<String, String>> {
+    let mut metadata = BTreeMap::new();
+    let mut stmt = match conn.prepare("SELECT name, value FROM metadata") {
+        Ok(stmt) => stmt,
+        Err(err) => {
+            if err.to_string().contains("no such table") {
+                return Ok(metadata);
+            }
+            return Err(err).context("prepare metadata");
+        }
+    };
+    let mut rows = stmt.query([]).context("query metadata")?;
+    while let Some(row) = rows.next().context("read metadata row")? {
+        let name: String = row.get(0)?;
+        let value: String = row.get(1)?;
+        metadata.insert(name, value);
+    }
+    Ok(metadata)
 }
 
 pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {

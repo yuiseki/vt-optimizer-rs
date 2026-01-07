@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use tile_prune::mbtiles::{
     HistogramBucket, MbtilesReport, MbtilesStats, MbtilesZoomStats, TileSummary, TopTile,
     ZoomHistogram,
@@ -7,6 +9,7 @@ use tile_prune::output::{ndjson_lines, resolve_output_format, NdjsonOptions};
 #[test]
 fn ndjson_splits_histograms_and_top_tile_summaries() {
     let report = MbtilesReport {
+        metadata: BTreeMap::new(),
         overall: MbtilesStats {
             tile_count: 1,
             total_bytes: 10,
@@ -126,6 +129,7 @@ fn ndjson_splits_histograms_and_top_tile_summaries() {
 #[test]
 fn ndjson_lite_omits_summary() {
     let report = MbtilesReport {
+        metadata: BTreeMap::new(),
         overall: MbtilesStats {
             tile_count: 1,
             total_bytes: 10,
@@ -166,6 +170,7 @@ fn ndjson_lite_omits_summary() {
 #[test]
 fn ndjson_sorts_zoom_histograms_and_recommendations() {
     let report = MbtilesReport {
+        metadata: BTreeMap::new(),
         overall: MbtilesStats {
             tile_count: 1,
             total_bytes: 10,
@@ -238,6 +243,7 @@ fn ndjson_sorts_zoom_histograms_and_recommendations() {
 #[test]
 fn ndjson_compact_minimizes_payloads() {
     let report = MbtilesReport {
+        metadata: BTreeMap::new(),
         overall: MbtilesStats {
             tile_count: 1,
             total_bytes: 10,
@@ -318,6 +324,7 @@ fn ndjson_compact_minimizes_payloads() {
 #[test]
 fn ndjson_compact_omits_summary_even_when_requested() {
     let report = MbtilesReport {
+        metadata: BTreeMap::new(),
         overall: MbtilesStats {
             tile_count: 1,
             total_bytes: 10,
