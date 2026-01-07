@@ -173,6 +173,15 @@ fn main() -> Result<()> {
                             .max()
                             .unwrap_or(4)
                             .max("name".len());
+                        let vertices_width = report
+                            .file_layers
+                            .iter()
+                            .map(|l| l.vertex_count)
+                            .max()
+                            .unwrap_or(0)
+                            .to_string()
+                            .len()
+                            .max("# of vertices".len());
                         let features_width = report
                             .file_layers
                             .iter()
@@ -181,7 +190,7 @@ fn main() -> Result<()> {
                             .unwrap_or(0)
                             .to_string()
                             .len()
-                            .max("features".len());
+                            .max("# of features".len());
                         let keys_width = report
                             .file_layers
                             .iter()
@@ -190,23 +199,32 @@ fn main() -> Result<()> {
                             .unwrap_or(0)
                             .to_string()
                             .len()
-                            .max("keys".len());
+                            .max("# of keys".len());
+                        let values_width = report
+                            .file_layers
+                            .iter()
+                            .map(|l| l.property_value_count)
+                            .max()
+                            .unwrap_or(0)
+                            .to_string()
+                            .len()
+                            .max("# of values".len());
                         println!(
                             "  {} {} {} {} {}",
                             pad_right("name", name_width),
-                            pad_left("features", features_width),
-                            pad_left("keys", keys_width),
-                            pad_left("extent", 6),
-                            pad_left("ver", 3),
+                            pad_left("# of vertices", vertices_width),
+                            pad_left("# of features", features_width),
+                            pad_left("# of keys", keys_width),
+                            pad_left("# of values", values_width),
                         );
                         for layer in report.file_layers.iter() {
                             println!(
                                 "  {} {} {} {} {}",
                                 pad_right(&layer.name, name_width),
+                                pad_left(&layer.vertex_count.to_string(), vertices_width),
                                 pad_left(&layer.feature_count.to_string(), features_width),
                                 pad_left(&layer.property_key_count.to_string(), keys_width),
-                                pad_left(&layer.extent.to_string(), 6),
-                                pad_left(&layer.version.to_string(), 3),
+                                pad_left(&layer.property_value_count.to_string(), values_width),
                             );
                         }
                     }

@@ -413,6 +413,14 @@ v0.0.4 では以下を **含めない**。
   * zoom 別の削除 feature 数
   * zoom 別の削除 layer 名
 
+---
+
+## 1.46 マイルストーン（v0.0.44）
+
+* inspect Layers の出力拡張
+  * テーブル列: name / # of vertices / # of features / # of keys / # of values
+  * 頂点数・属性値数を集計
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）

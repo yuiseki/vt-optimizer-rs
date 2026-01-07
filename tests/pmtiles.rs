@@ -309,13 +309,13 @@ fn inspect_pmtiles_collects_layer_list() {
     layers.sort_by(|a, b| a.name.cmp(&b.name));
     assert_eq!(layers.len(), 2);
     assert_eq!(layers[0].name, "buildings");
+    assert_eq!(layers[0].vertex_count, 1);
     assert_eq!(layers[0].feature_count, 1);
     assert_eq!(layers[0].property_key_count, 1);
-    assert_eq!(layers[0].extent, 4096);
-    assert_eq!(layers[0].version, 2);
+    assert_eq!(layers[0].property_value_count, 1);
     assert_eq!(layers[1].name, "roads");
+    assert_eq!(layers[1].vertex_count, 1);
     assert_eq!(layers[1].feature_count, 1);
     assert_eq!(layers[1].property_key_count, 2);
-    assert_eq!(layers[1].extent, 4096);
-    assert_eq!(layers[1].version, 2);
+    assert_eq!(layers[1].property_value_count, 2);
 }

@@ -13,7 +13,8 @@ use serde_json::Value;
 use varint_rs::{VarintReader, VarintWriter};
 
 use crate::mbtiles::{
-    HistogramBucket, InspectOptions, MbtilesReport, MbtilesStats, MbtilesZoomStats, ZoomHistogram,
+    count_vertices, format_property_value, HistogramBucket, InspectOptions, MbtilesReport,
+    MbtilesStats, MbtilesZoomStats, ZoomHistogram,
 };
 
 const HEADER_SIZE: usize = 127;
@@ -66,9 +67,9 @@ struct StatAccum {
 
 struct LayerAccum {
     feature_count: u64,
+    vertex_count: u64,
     property_keys: HashSet<String>,
-    extent: u32,
-    version: u32,
+    property_values: HashSet<String>,
 }
 
 impl StatAccum {
@@ -905,18 +906,22 @@ fn build_file_layer_list_pmtiles(
             for layer in layers {
                 let entry = map.entry(layer.name.clone()).or_insert_with(|| LayerAccum {
                     feature_count: 0,
+                    vertex_count: 0,
                     property_keys: HashSet::new(),
-                    extent: layer.extent,
-                    version: layer.version,
+                    property_values: HashSet::new(),
                 });
                 entry.feature_count += (layer.feature_count as u64) * selected;
                 let features = reader
                     .get_features(layer.layer_index)
                     .map_err(|err| anyhow::anyhow!("read layer features: {err}"))?;
                 for feature in features {
+                    entry.vertex_count += (count_vertices(&feature.geometry) as u64) * selected;
                     if let Some(props) = feature.properties {
-                        for key in props.keys() {
+                        for (key, value) in props {
                             entry.property_keys.insert(key.clone());
+                            entry
+                                .property_values
+                                .insert(format_property_value(&value));
                         }
                     }
                 }
@@ -928,10 +933,10 @@ fn build_file_layer_list_pmtiles(
         .into_iter()
         .map(|(name, accum)| crate::mbtiles::FileLayerSummary {
             name,
+            vertex_count: accum.vertex_count,
             feature_count: accum.feature_count,
             property_key_count: accum.property_keys.len(),
-            extent: accum.extent,
-            version: accum.version,
+            property_value_count: accum.property_values.len(),
         })
         .collect::<Vec<_>>();
     result.sort_by(|a, b| a.name.cmp(&b.name));

@@ -91,10 +91,10 @@ pub struct LayerSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct FileLayerSummary {
     pub name: String,
+    pub vertex_count: u64,
     pub feature_count: u64,
     pub property_key_count: usize,
-    pub extent: u32,
-    pub version: u32,
+    pub property_value_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -252,6 +252,54 @@ fn encode_tile_payload(data: &[u8], gzip: bool) -> Result<Vec<u8>> {
         .context("encode gzip tile data")?;
     let encoded = encoder.finish().context("finish gzip tile data")?;
     Ok(encoded)
+}
+
+pub(crate) fn count_vertices(geometry: &geo_types::Geometry<f32>) -> usize {
+    match geometry {
+        geo_types::Geometry::Point(_) => 1,
+        geo_types::Geometry::MultiPoint(points) => points.len(),
+        geo_types::Geometry::LineString(line) => ring_coords(line).len(),
+        geo_types::Geometry::MultiLineString(lines) => lines.iter().map(|l| ring_coords(l).len()).sum(),
+        geo_types::Geometry::Line(_) => 2,
+        geo_types::Geometry::Polygon(polygon) => {
+            let mut count = ring_coords(polygon.exterior()).len();
+            for ring in polygon.interiors() {
+                count += ring_coords(ring).len();
+            }
+            count
+        }
+        geo_types::Geometry::MultiPolygon(polygons) => polygons
+            .iter()
+            .map(|polygon| {
+                let mut count = ring_coords(polygon.exterior()).len();
+                for ring in polygon.interiors() {
+                    count += ring_coords(ring).len();
+                }
+                count
+            })
+            .sum(),
+        geo_types::Geometry::Rect(_rect) => 4,
+        geo_types::Geometry::Triangle(_) => 3,
+        geo_types::Geometry::GeometryCollection(collection) => {
+            collection
+                .iter()
+                .map(|geom| count_vertices(geom))
+                .sum()
+        }
+    }
+}
+
+pub(crate) fn format_property_value(value: &mvt_reader::feature::Value) -> String {
+    match value {
+        mvt_reader::feature::Value::String(text) => text.clone(),
+        mvt_reader::feature::Value::Float(val) => val.to_string(),
+        mvt_reader::feature::Value::Double(val) => val.to_string(),
+        mvt_reader::feature::Value::Int(val) => val.to_string(),
+        mvt_reader::feature::Value::UInt(val) => val.to_string(),
+        mvt_reader::feature::Value::SInt(val) => val.to_string(),
+        mvt_reader::feature::Value::Bool(val) => val.to_string(),
+        mvt_reader::feature::Value::Null => "null".to_string(),
+    }
 }
 
 fn encode_linestring(encoder: &mut GeomEncoder<f32>, line: &LineString<f32>) -> Result<()> {
@@ -491,9 +539,9 @@ fn prune_tile_layers(
 
 struct LayerAccum {
     feature_count: u64,
+    vertex_count: u64,
     property_keys: HashSet<String>,
-    extent: u32,
-    version: u32,
+    property_values: HashSet<String>,
 }
 
 fn build_file_layer_list(
@@ -531,18 +579,22 @@ fn build_file_layer_list(
         for layer in layers {
             let entry = map.entry(layer.name.clone()).or_insert_with(|| LayerAccum {
                 feature_count: 0,
+                vertex_count: 0,
                 property_keys: HashSet::new(),
-                extent: layer.extent,
-                version: layer.version,
+                property_values: HashSet::new(),
             });
             entry.feature_count += layer.feature_count as u64;
             let features = reader
                 .get_features(layer.layer_index)
                 .map_err(|err| anyhow::anyhow!("read layer features: {err}"))?;
             for feature in features {
+                entry.vertex_count += count_vertices(&feature.geometry) as u64;
                 if let Some(props) = feature.properties {
-                    for key in props.keys() {
+                    for (key, value) in props {
                         entry.property_keys.insert(key.clone());
+                        entry
+                            .property_values
+                            .insert(format_property_value(&value));
                     }
                 }
             }
@@ -559,10 +611,10 @@ fn build_file_layer_list(
         .into_iter()
         .map(|(name, accum)| FileLayerSummary {
             name,
+            vertex_count: accum.vertex_count,
             feature_count: accum.feature_count,
             property_key_count: accum.property_keys.len(),
-            extent: accum.extent,
-            version: accum.version,
+            property_value_count: accum.property_values.len(),
         })
         .collect::<Vec<_>>();
     result.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1269,16 +1321,20 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
                             for layer in layers {
                                 let entry = layer_accums.entry(layer.name.clone()).or_insert_with(|| LayerAccum {
                                     feature_count: 0,
+                                    vertex_count: 0,
                                     property_keys: HashSet::new(),
-                                    extent: layer.extent,
-                                    version: layer.version,
+                                    property_values: HashSet::new(),
                                 });
                                 entry.feature_count += layer.feature_count as u64;
                                 if let Ok(features) = reader.get_features(layer.layer_index) {
                                     for feature in features {
+                                        entry.vertex_count += count_vertices(&feature.geometry) as u64;
                                         if let Some(props) = feature.properties {
-                                            for key in props.keys() {
+                                            for (key, value) in props {
                                                 entry.property_keys.insert(key.clone());
+                                                entry
+                                                    .property_values
+                                                    .insert(format_property_value(&value));
                                             }
                                         }
                                     }
@@ -1348,10 +1404,10 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
             .into_iter()
             .map(|(name, accum)| FileLayerSummary {
                 name,
+                vertex_count: accum.vertex_count,
                 feature_count: accum.feature_count,
                 property_key_count: accum.property_keys.len(),
-                extent: accum.extent,
-                version: accum.version,
+                property_value_count: accum.property_values.len(),
             })
             .collect::<Vec<_>>();
         result.sort_by(|a, b| a.name.cmp(&b.name));

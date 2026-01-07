@@ -86,17 +86,17 @@ fn inspect_collects_file_layer_list() {
         vec![
             FileLayerSummary {
                 name: "buildings".to_string(),
+                vertex_count: 1,
                 feature_count: 1,
                 property_key_count: 1,
-                extent: 4096,
-                version: 2,
+                property_value_count: 1,
             },
             FileLayerSummary {
                 name: "roads".to_string(),
+                vertex_count: 1,
                 feature_count: 1,
                 property_key_count: 2,
-                extent: 4096,
-                version: 2,
+                property_value_count: 2,
             },
         ]
     );
