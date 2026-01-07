@@ -19,9 +19,11 @@ mvt-reader = "2.2.0"
 flate2 = "1"
 nu-ansi-term = "0.50"
 brotli = "3.5"
+mvt = "0.10.3"
+protobuf = "3.7"
+geo-types = "0.7"
 
 [dev-dependencies]
-mvt = "0.10.3"
 
 [lib]
 name = "tile_prune"

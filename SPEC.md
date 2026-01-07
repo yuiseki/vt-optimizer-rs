@@ -345,6 +345,16 @@ v0.0.4 では以下を **含めない**。
 
 ---
 
+## 1.38 マイルストーン（v0.0.36）
+
+* prune の最小導入（layer pruning のみ）
+  * style JSON から `source-layer` 一覧を抽出
+  * MVT から未使用レイヤーを削除（feature は削除しない）
+  * `--style-mode layer` 相当の挙動
+  * 対象出力は MBTiles のみ（PMTiles は後続）
+
+---
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）

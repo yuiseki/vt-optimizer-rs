@@ -1,17 +1,18 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 
 use tile_prune::cli::{Cli, Command, ReportFormat, TileSortArg};
 use tile_prune::format::{plan_copy, plan_optimize, resolve_output_path};
 use tile_prune::mbtiles::{
-    copy_mbtiles, inspect_mbtiles_with_options, parse_sample_spec, parse_tile_spec, InspectOptions,
-    TileListOptions, TileSort,
+    copy_mbtiles, inspect_mbtiles_with_options, parse_sample_spec, parse_tile_spec,
+    prune_mbtiles_layer_only, InspectOptions, TileListOptions, TileSort,
 };
 use tile_prune::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,
     format_metadata_section, ndjson_lines, pad_left, pad_right, resolve_output_format,
 };
 use tile_prune::pmtiles::{inspect_pmtiles_with_options, mbtiles_to_pmtiles, pmtiles_to_mbtiles};
+use tile_prune::style::read_style_source_layers;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -292,7 +293,23 @@ fn main() -> Result<()> {
             )?;
             let _output_path =
                 resolve_output_path(&args.input, args.output.as_deref(), decision.output);
-            println!("optimize: input={}", args.input.display());
+            let style_path = args
+                .style
+                .as_ref()
+                .context("--style is required for optimize")?;
+            if args.style_mode != tile_prune::cli::StyleMode::Layer {
+                anyhow::bail!("v0.0.36 only supports --style-mode layer");
+            }
+            let keep_layers = read_style_source_layers(style_path)?;
+            match (decision.input, decision.output) {
+                (tile_prune::format::TileFormat::Mbtiles, tile_prune::format::TileFormat::Mbtiles) => {
+                    prune_mbtiles_layer_only(&args.input, &_output_path, &keep_layers)?;
+                }
+                _ => {
+                    anyhow::bail!("v0.0.36 only supports MBTiles input/output for optimize");
+                }
+            }
+            println!("optimize: input={} output={}", args.input.display(), _output_path.display());
         }
         Command::Simplify(args) => {
             println!("simplify: input={} z={} x={} y={}", args.input.display(), args.z, args.x, args.y);

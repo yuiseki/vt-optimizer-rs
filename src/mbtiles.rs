@@ -1,12 +1,16 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BinaryHeap, HashSet};
 use std::path::Path;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
 use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
+use geo_types::{Geometry, Line, LineString, MultiLineString, MultiPoint, MultiPolygon, Polygon};
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+use mvt::{GeomData, GeomEncoder, GeomType, Tile};
 use mvt_reader::Reader;
 use rusqlite::{params, Connection, OpenFlags};
 use serde::Serialize;
@@ -235,6 +239,222 @@ fn decode_tile_payload(data: &[u8]) -> Result<Vec<u8>> {
     } else {
         Ok(data.to_vec())
     }
+}
+
+fn encode_tile_payload(data: &[u8], gzip: bool) -> Result<Vec<u8>> {
+    if !gzip {
+        return Ok(data.to_vec());
+    }
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(data)
+        .context("encode gzip tile data")?;
+    let encoded = encoder.finish().context("finish gzip tile data")?;
+    Ok(encoded)
+}
+
+fn encode_linestring(encoder: &mut GeomEncoder<f32>, line: &LineString<f32>) -> Result<()> {
+    for coord in ring_coords(line) {
+        encoder
+            .add_point(coord.x, coord.y)
+            .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))?;
+    }
+    Ok(())
+}
+
+fn ring_coords(line: &LineString<f32>) -> &[geo_types::Coord<f32>] {
+    let coords = line.0.as_slice();
+    if coords.len() > 1 && coords.first() == coords.last() {
+        &coords[..coords.len() - 1]
+    } else {
+        coords
+    }
+}
+
+fn encode_geometry(geometry: &Geometry<f32>) -> Result<GeomData> {
+    match geometry {
+        Geometry::Point(point) => {
+            let encoder = GeomEncoder::new(GeomType::Point)
+                .point(point.x(), point.y())
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))?;
+            encoder
+                .encode()
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))
+        }
+        Geometry::MultiPoint(MultiPoint(points)) => {
+            let mut encoder = GeomEncoder::new(GeomType::Point);
+            for point in points {
+                encoder
+                    .add_point(point.x(), point.y())
+                    .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))?;
+            }
+            encoder
+                .encode()
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))
+        }
+        Geometry::LineString(line) => {
+            let mut encoder = GeomEncoder::new(GeomType::Linestring);
+            encode_linestring(&mut encoder, line)?;
+            encoder
+                .encode()
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))
+        }
+        Geometry::Line(Line { start, end }) => {
+            let line = LineString::from(vec![(start.x, start.y), (end.x, end.y)]);
+            let mut encoder = GeomEncoder::new(GeomType::Linestring);
+            encode_linestring(&mut encoder, &line)?;
+            encoder
+                .encode()
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))
+        }
+        Geometry::MultiLineString(MultiLineString(lines)) => {
+            let mut encoder = GeomEncoder::new(GeomType::Linestring);
+            for (idx, line) in lines.iter().enumerate() {
+                encode_linestring(&mut encoder, line)?;
+                if idx + 1 < lines.len() {
+                    encoder
+                        .complete_geom()
+                        .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))?;
+                }
+            }
+            encoder
+                .encode()
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))
+        }
+        Geometry::Polygon(polygon) => {
+            let mut encoder = GeomEncoder::new(GeomType::Polygon);
+            let mut rings: Vec<&LineString<f32>> =
+                Vec::with_capacity(1 + polygon.interiors().len());
+            rings.push(polygon.exterior());
+            for ring in polygon.interiors() {
+                rings.push(ring);
+            }
+            for (idx, ring) in rings.iter().enumerate() {
+                encode_linestring(&mut encoder, ring)?;
+                if idx + 1 < rings.len() {
+                    encoder
+                        .complete_geom()
+                        .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))?;
+                }
+            }
+            encoder
+                .encode()
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))
+        }
+        Geometry::MultiPolygon(MultiPolygon(polygons)) => {
+            let mut encoder = GeomEncoder::new(GeomType::Polygon);
+            for (poly_idx, polygon) in polygons.iter().enumerate() {
+                let mut rings: Vec<&LineString<f32>> = Vec::with_capacity(1 + polygon.interiors().len());
+                rings.push(polygon.exterior());
+                for ring in polygon.interiors() {
+                    rings.push(ring);
+                }
+                for (idx, ring) in rings.iter().enumerate() {
+                    encode_linestring(&mut encoder, ring)?;
+                    if idx + 1 < rings.len() || poly_idx + 1 < polygons.len() {
+                        encoder
+                            .complete_geom()
+                            .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))?;
+                    }
+                }
+            }
+            encoder
+                .encode()
+                .map_err(|err| anyhow::anyhow!("encode geometry: {err}"))
+        }
+        Geometry::GeometryCollection(_) => {
+            anyhow::bail!("geometry collections are not supported for pruning");
+        }
+        Geometry::Rect(rect) => {
+            let exterior = LineString::from(vec![
+                (rect.min().x, rect.min().y),
+                (rect.max().x, rect.min().y),
+                (rect.max().x, rect.max().y),
+                (rect.min().x, rect.max().y),
+                (rect.min().x, rect.min().y),
+            ]);
+            let polygon = Polygon::new(exterior, Vec::new());
+            encode_geometry(&Geometry::Polygon(polygon))
+        }
+        Geometry::Triangle(tri) => {
+            let exterior = LineString::from(vec![
+                (tri.0.x, tri.0.y),
+                (tri.1.x, tri.1.y),
+                (tri.2.x, tri.2.y),
+                (tri.0.x, tri.0.y),
+            ]);
+            let polygon = Polygon::new(exterior, Vec::new());
+            encode_geometry(&Geometry::Polygon(polygon))
+        }
+    }
+}
+
+fn prune_tile_layers(payload: &[u8], keep_layers: &HashSet<String>) -> Result<Vec<u8>> {
+    let reader = Reader::new(payload.to_vec())
+        .map_err(|err| anyhow::anyhow!("decode vector tile: {err}"))?;
+    let layers = reader
+        .get_layer_metadata()
+        .map_err(|err| anyhow::anyhow!("read layer metadata: {err}"))?;
+
+    let mut extent = 4096;
+    for layer in layers.iter() {
+        if keep_layers.contains(&layer.name) {
+            extent = layer.extent;
+            break;
+        }
+    }
+
+    let mut tile = Tile::new(extent);
+    for layer in layers {
+        if !keep_layers.contains(&layer.name) {
+            continue;
+        }
+        let mut layer_builder = tile.create_layer(&layer.name);
+        let features = reader
+            .get_features(layer.layer_index)
+            .map_err(|err| anyhow::anyhow!("read layer features: {err}"))?;
+        for feature in features {
+            let geom_data = encode_geometry(feature.get_geometry())?;
+            let mut feature_builder = layer_builder.into_feature(geom_data);
+            if let Some(id) = feature.id {
+                feature_builder.set_id(id);
+            }
+            if let Some(props) = feature.properties {
+                for (key, value) in props {
+                    match value {
+                        mvt_reader::feature::Value::String(text) => {
+                            feature_builder.add_tag_string(&key, &text);
+                        }
+                        mvt_reader::feature::Value::Float(val) => {
+                            feature_builder.add_tag_float(&key, val);
+                        }
+                        mvt_reader::feature::Value::Double(val) => {
+                            feature_builder.add_tag_double(&key, val);
+                        }
+                        mvt_reader::feature::Value::Int(val) => {
+                            feature_builder.add_tag_int(&key, val);
+                        }
+                        mvt_reader::feature::Value::UInt(val) => {
+                            feature_builder.add_tag_uint(&key, val);
+                        }
+                        mvt_reader::feature::Value::SInt(val) => {
+                            feature_builder.add_tag_sint(&key, val);
+                        }
+                        mvt_reader::feature::Value::Bool(val) => {
+                            feature_builder.add_tag_bool(&key, val);
+                        }
+                        mvt_reader::feature::Value::Null => {}
+                    }
+                }
+            }
+            layer_builder = feature_builder.into_layer();
+        }
+        tile.add_layer(layer_builder)
+            .map_err(|err| anyhow::anyhow!("add layer: {err}"))?;
+    }
+
+    tile.to_bytes()
+        .map_err(|err| anyhow::anyhow!("encode vector tile: {err}"))
 }
 
 struct LayerAccum {
@@ -1353,6 +1573,78 @@ pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {
             )
             .context("insert tile")?;
         }
+    }
+
+    tx.commit().context("commit output")?;
+    Ok(())
+}
+
+pub fn prune_mbtiles_layer_only(
+    input: &Path,
+    output: &Path,
+    keep_layers: &HashSet<String>,
+) -> Result<()> {
+    ensure_mbtiles_path(input)?;
+    ensure_mbtiles_path(output)?;
+
+    let input_conn = Connection::open(input)
+        .with_context(|| format!("failed to open input mbtiles: {}", input.display()))?;
+    let mut output_conn = Connection::open(output)
+        .with_context(|| format!("failed to open output mbtiles: {}", output.display()))?;
+
+    output_conn
+        .execute_batch(
+            "
+            CREATE TABLE metadata (name TEXT, value TEXT);
+            CREATE TABLE tiles (
+                zoom_level INTEGER,
+                tile_column INTEGER,
+                tile_row INTEGER,
+                tile_data BLOB
+            );
+            ",
+        )
+        .context("failed to create output schema")?;
+
+    let tx = output_conn.transaction().context("begin output transaction")?;
+
+    let mut meta_stmt = input_conn
+        .prepare("SELECT name, value FROM metadata")
+        .context("prepare metadata read")?;
+    let mut meta_rows = meta_stmt.query([]).context("query metadata")?;
+    while let Some(row) = meta_rows.next().context("read metadata row")? {
+        let name: String = row.get(0)?;
+        let value: String = row.get(1)?;
+        tx.execute(
+            "INSERT INTO metadata (name, value) VALUES (?1, ?2)",
+            (name, value),
+        )
+        .context("insert metadata")?;
+    }
+
+    let mut stmt = input_conn
+        .prepare(
+            "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles ORDER BY zoom_level, tile_column, tile_row",
+        )
+        .context("prepare tile scan")?;
+    let mut rows = stmt.query([]).context("query tiles")?;
+
+    while let Some(row) = rows.next().context("read tile row")? {
+        let zoom: u8 = row.get(0)?;
+        let x: u32 = row.get(1)?;
+        let y: u32 = row.get(2)?;
+        let data: Vec<u8> = row.get(3)?;
+
+        let is_gzip = data.starts_with(&[0x1f, 0x8b]);
+        let payload = decode_tile_payload(&data)?;
+        let encoded = prune_tile_layers(&payload, keep_layers)?;
+        let tile_data = encode_tile_payload(&encoded, is_gzip)?;
+
+        tx.execute(
+            "INSERT INTO tiles (zoom_level, tile_column, tile_row, tile_data) VALUES (?1, ?2, ?3, ?4)",
+            (zoom as i64, x as i64, y as i64, tile_data),
+        )
+        .context("insert tile")?;
     }
 
     tx.commit().context("commit output")?;
