@@ -1,7 +1,10 @@
+use std::fs::File;
+use std::io::{Seek, SeekFrom, Write};
 use std::path::Path;
 
+use brotli::CompressorWriter;
 use tile_prune::mbtiles::inspect_mbtiles;
-use tile_prune::pmtiles::{mbtiles_to_pmtiles, pmtiles_to_mbtiles};
+use tile_prune::pmtiles::{inspect_pmtiles_metadata, mbtiles_to_pmtiles, pmtiles_to_mbtiles};
 
 fn create_sample_mbtiles(path: &Path) {
     let conn = rusqlite::Connection::open(path).expect("open");
@@ -39,6 +42,82 @@ fn create_sample_mbtiles(path: &Path) {
     .expect("tile2");
 }
 
+fn write_pmtiles_with_metadata(path: &Path, metadata_json: &str) {
+    write_pmtiles_with_metadata_and_compression(path, metadata_json, 0);
+}
+
+fn write_pmtiles_with_metadata_and_compression(
+    path: &Path,
+    metadata_json: &str,
+    internal_compression: u8,
+) {
+    const HEADER_SIZE: usize = 127;
+    const MAGIC: &[u8; 7] = b"PMTiles";
+    const VERSION: u8 = 3;
+
+    let metadata_bytes = match internal_compression {
+        0 => metadata_json.as_bytes().to_vec(),
+        2 => {
+            let mut compressed = Vec::new();
+            {
+                let mut writer = CompressorWriter::new(&mut compressed, 4096, 5, 22);
+                writer
+                    .write_all(metadata_json.as_bytes())
+                    .expect("compress metadata");
+            }
+            compressed
+        }
+        other => panic!("unsupported compression for test: {}", other),
+    };
+    let metadata_offset = HEADER_SIZE as u64;
+    let metadata_length = metadata_bytes.len() as u64;
+    let root_offset = metadata_offset + metadata_length;
+    let root_length = 0u64;
+
+    let mut header = Vec::with_capacity(HEADER_SIZE);
+    header.extend_from_slice(MAGIC);
+    header.push(VERSION);
+
+    for value in [
+        root_offset,
+        root_length,
+        metadata_offset,
+        metadata_length,
+        0u64, // leaf_offset
+        0u64, // leaf_length
+        root_offset, // data_offset
+        0u64, // data_length
+    ] {
+        header.extend_from_slice(&value.to_le_bytes());
+    }
+
+    for value in [0u64, 0u64, 0u64] {
+        header.extend_from_slice(&value.to_le_bytes());
+    }
+
+    header.push(0); // clustered
+    header.push(internal_compression); // internal_compression
+    header.push(0); // tile_compression
+    header.push(0); // tile_type
+    header.push(0); // min_zoom
+    header.push(0); // max_zoom
+    header.extend_from_slice(&0i32.to_le_bytes()); // min_longitude
+    header.extend_from_slice(&0i32.to_le_bytes()); // min_latitude
+    header.extend_from_slice(&0i32.to_le_bytes()); // max_longitude
+    header.extend_from_slice(&0i32.to_le_bytes()); // max_latitude
+    header.push(0); // center_zoom
+    header.extend_from_slice(&0i32.to_le_bytes()); // center_longitude
+    header.extend_from_slice(&0i32.to_le_bytes()); // center_latitude
+
+    assert_eq!(header.len(), HEADER_SIZE);
+
+    let mut file = File::create(path).expect("create pmtiles");
+    file.write_all(&header).expect("write header");
+    file.seek(SeekFrom::Start(metadata_offset))
+        .expect("seek metadata");
+    file.write_all(&metadata_bytes).expect("write metadata");
+}
+
 #[test]
 fn mbtiles_to_pmtiles_and_back_preserves_counts() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -55,4 +134,35 @@ fn mbtiles_to_pmtiles_and_back_preserves_counts() {
     assert_eq!(report.overall.total_bytes, 30);
     assert_eq!(report.overall.max_bytes, 20);
     assert_eq!(report.overall.avg_bytes, 15);
+}
+
+#[test]
+fn inspect_pmtiles_reads_metadata() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pmtiles = dir.path().join("metadata.pmtiles");
+    write_pmtiles_with_metadata(
+        &pmtiles,
+        r#"{"name":"sample","minzoom":0,"maxzoom":2,"format":"pbf"}"#,
+    );
+
+    let report = inspect_pmtiles_metadata(&pmtiles).expect("inspect pmtiles");
+    assert_eq!(report.metadata.get("name").map(String::as_str), Some("sample"));
+    assert_eq!(report.metadata.get("minzoom").map(String::as_str), Some("0"));
+    assert_eq!(report.metadata.get("maxzoom").map(String::as_str), Some("2"));
+    assert_eq!(report.metadata.get("format").map(String::as_str), Some("pbf"));
+}
+
+#[test]
+fn inspect_pmtiles_reads_brotli_metadata() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let pmtiles = dir.path().join("metadata-brotli.pmtiles");
+    write_pmtiles_with_metadata_and_compression(
+        &pmtiles,
+        r#"{"name":"sample","minzoom":1}"#,
+        2,
+    );
+
+    let report = inspect_pmtiles_metadata(&pmtiles).expect("inspect pmtiles");
+    assert_eq!(report.metadata.get("name").map(String::as_str), Some("sample"));
+    assert_eq!(report.metadata.get("minzoom").map(String::as_str), Some("1"));
 }

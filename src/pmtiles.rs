@@ -1,11 +1,17 @@
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result};
+use brotli::Decompressor;
+use flate2::read::GzDecoder;
 use hilbert_2d::{h2xy_discrete, xy2h_discrete, Variant};
 use rusqlite::Connection;
+use serde_json::Value;
 use varint_rs::{VarintReader, VarintWriter};
+
+use crate::mbtiles::{MbtilesReport, MbtilesStats};
 
 const HEADER_SIZE: usize = 127;
 const MAGIC: &[u8; 7] = b"PMTiles";
@@ -340,6 +346,96 @@ fn read_u8(input: &mut &[u8]) -> Result<u8> {
     let value = input[0];
     *input = &input[1..];
     Ok(value)
+}
+
+fn read_metadata_section(mut file: &File, header: &Header) -> Result<BTreeMap<String, String>> {
+    if header.metadata_length == 0 {
+        return Ok(BTreeMap::new());
+    }
+    file.seek(SeekFrom::Start(header.metadata_offset))
+        .context("seek metadata")?;
+    let mut data = vec![0u8; header.metadata_length as usize];
+    file.read_exact(&mut data).context("read metadata")?;
+
+    let decoded = decode_metadata_bytes(data, header.internal_compression)?;
+
+    let value: Value = serde_json::from_slice(&decoded).context("parse metadata json")?;
+    let mut metadata = BTreeMap::new();
+    if let Value::Object(map) = value {
+        for (key, value) in map.into_iter() {
+            let text = match value {
+                Value::String(text) => text,
+                other => other.to_string(),
+            };
+            metadata.insert(key, text);
+        }
+    }
+    Ok(metadata)
+}
+
+fn decode_metadata_bytes(data: Vec<u8>, internal_compression: u8) -> Result<Vec<u8>> {
+    if data.starts_with(&[0x1f, 0x8b]) {
+        let mut decoder = GzDecoder::new(data.as_slice());
+        let mut decoded = Vec::new();
+        decoder
+            .read_to_end(&mut decoded)
+            .context("decode gzip metadata")?;
+        return Ok(decoded);
+    }
+
+    match internal_compression {
+        0 => Ok(data),
+        1 => {
+            let mut decoder = GzDecoder::new(data.as_slice());
+            let mut decoded = Vec::new();
+            decoder
+                .read_to_end(&mut decoded)
+                .context("decode gzip metadata")?;
+            Ok(decoded)
+        }
+        2 => {
+            let mut decoder = Decompressor::new(data.as_slice(), 4096);
+            let mut decoded = Vec::new();
+            decoder
+                .read_to_end(&mut decoded)
+                .context("decode brotli metadata")?;
+            Ok(decoded)
+        }
+        other => anyhow::bail!("unsupported PMTiles metadata compression: {other}"),
+    }
+}
+
+pub fn inspect_pmtiles_metadata(path: &Path) -> Result<MbtilesReport> {
+    ensure_pmtiles_path(path)?;
+    let file = File::open(path)
+        .with_context(|| format!("failed to open input pmtiles: {}", path.display()))?;
+    let header = read_header(&file).context("read header")?;
+    let metadata = read_metadata_section(&file, &header)?;
+
+    Ok(MbtilesReport {
+        metadata,
+        overall: MbtilesStats {
+            tile_count: 0,
+            total_bytes: 0,
+            max_bytes: 0,
+            avg_bytes: 0,
+        },
+        by_zoom: Vec::new(),
+        empty_tiles: 0,
+        empty_ratio: 0.0,
+        sampled: false,
+        sample_total_tiles: 0,
+        sample_used_tiles: 0,
+        histogram: Vec::new(),
+        histograms_by_zoom: Vec::new(),
+        file_layers: Vec::new(),
+        top_tiles: Vec::new(),
+        bucket_count: None,
+        bucket_tiles: Vec::new(),
+        tile_summary: None,
+        recommended_buckets: Vec::new(),
+        top_tile_summaries: Vec::new(),
+    })
 }
 
 pub fn mbtiles_to_pmtiles(input: &Path, output: &Path) -> Result<()> {

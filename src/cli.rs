@@ -24,7 +24,7 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct InspectArgs {
-    /// Path to an MBTiles file to inspect.
+    /// Path to an MBTiles or PMTiles file to inspect.
     pub input: PathBuf,
 
     /// Threshold in bytes for size warnings in histogram averages.

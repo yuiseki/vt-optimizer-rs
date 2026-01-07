@@ -11,7 +11,7 @@ use tile_prune::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,
     format_metadata_section, ndjson_lines, pad_left, pad_right, resolve_output_format,
 };
-use tile_prune::pmtiles::{mbtiles_to_pmtiles, pmtiles_to_mbtiles};
+use tile_prune::pmtiles::{inspect_pmtiles_metadata, mbtiles_to_pmtiles, pmtiles_to_mbtiles};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -81,7 +81,16 @@ fn main() -> Result<()> {
                     None
                 },
             };
-            let report = inspect_mbtiles_with_options(&args.input, options)?;
+            let input_format = tile_prune::format::TileFormat::from_extension(&args.input)
+                .ok_or_else(|| anyhow::anyhow!("cannot infer input format from path"))?;
+            let report = match input_format {
+                tile_prune::format::TileFormat::Mbtiles => {
+                    inspect_mbtiles_with_options(&args.input, options)?
+                }
+                tile_prune::format::TileFormat::Pmtiles => {
+                    inspect_pmtiles_metadata(&args.input)?
+                }
+            };
             match output {
                 ReportFormat::Json => {
                     let json = serde_json::to_string_pretty(&report)?;
