@@ -442,6 +442,14 @@ v0.0.4 では以下を **含めない**。
 * optimize の PMTiles 入出力対応
   * PMTiles を直接 prune して出力可能
 
+---
+
+## 1.50 マイルストーン（v0.0.48）
+
+* optimize の PMTiles 出力整合
+  * metadata を引き継ぎ
+  * tile_compression を入力に合わせる
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）

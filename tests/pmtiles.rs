@@ -275,6 +275,84 @@ fn prune_pmtiles_removes_unlisted_layers() {
 }
 
 #[test]
+fn prune_pmtiles_preserves_tile_compression() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let input_mbtiles = dir.path().join("input.mbtiles");
+    let input_pmtiles = dir.path().join("input.pmtiles");
+    let output_pmtiles = dir.path().join("output.pmtiles");
+    let style_path = dir.path().join("style.json");
+
+    create_layer_mbtiles(&input_mbtiles);
+    mbtiles_to_pmtiles(&input_mbtiles, &input_pmtiles).expect("mbtiles->pmtiles");
+
+    fs::write(
+        &style_path,
+        r#"{"version":8,"sources":{"osm":{"type":"vector"}},"layers":[{"id":"roads","type":"line","source":"osm","source-layer":"roads","paint":{"line-width":1}}]}"#,
+    )
+    .expect("write style");
+    let style = read_style(&style_path).expect("read style");
+
+    prune_pmtiles_layer_only(&input_pmtiles, &output_pmtiles, &style, false)
+        .expect("prune pmtiles");
+
+    let input_tile_compression =
+        read_tile_compression(&input_pmtiles).expect("read input compression");
+    let output_tile_compression =
+        read_tile_compression(&output_pmtiles).expect("read output compression");
+    assert_eq!(input_tile_compression, output_tile_compression);
+}
+
+fn read_tile_compression(path: &Path) -> std::io::Result<u8> {
+    const HEADER_SIZE: usize = 127;
+    const MAGIC: &[u8; 7] = b"PMTiles";
+    let mut buf = [0u8; HEADER_SIZE];
+    let mut file = File::open(path)?;
+    file.read_exact(&mut buf)?;
+    if &buf[0..MAGIC.len()] != MAGIC {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "invalid PMTiles magic",
+        ));
+    }
+    let mut cursor = &buf[MAGIC.len()..];
+    let _version = read_u8(&mut cursor)?;
+    for _ in 0..8 {
+        read_u64(&mut cursor)?;
+    }
+    for _ in 0..3 {
+        read_u64(&mut cursor)?;
+    }
+    let _clustered = read_u8(&mut cursor)?;
+    let _internal = read_u8(&mut cursor)?;
+    read_u8(&mut cursor)
+}
+
+fn read_u8(cursor: &mut &[u8]) -> std::io::Result<u8> {
+    if cursor.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "unexpected eof",
+        ));
+    }
+    let value = cursor[0];
+    *cursor = &cursor[1..];
+    Ok(value)
+}
+
+fn read_u64(cursor: &mut &[u8]) -> std::io::Result<u64> {
+    if cursor.len() < 8 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::UnexpectedEof,
+            "unexpected eof",
+        ));
+    }
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&cursor[..8]);
+    *cursor = &cursor[8..];
+    Ok(u64::from_le_bytes(buf))
+}
+
+#[test]
 fn inspect_pmtiles_counts_tiles_by_zoom() {
     let dir = tempfile::tempdir().expect("tempdir");
     let input = dir.path().join("input.mbtiles");

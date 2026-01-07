@@ -4,7 +4,9 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use brotli::Decompressor;
+use brotli::{CompressorWriter, Decompressor};
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use flate2::read::GzDecoder;
 use hilbert_2d::{h2xy_discrete, xy2h_discrete, Variant};
 use mvt_reader::Reader;
@@ -278,6 +280,56 @@ fn build_header(
     }
 }
 
+fn build_header_with_metadata(
+    root_length: u64,
+    metadata_length: u64,
+    data_length: u64,
+    tile_count: u64,
+    min_zoom: u8,
+    max_zoom: u8,
+    internal_compression: u8,
+    tile_compression: u8,
+    tile_type: u8,
+) -> Header {
+    let root_offset = HEADER_SIZE as u64;
+    let metadata_offset = if metadata_length == 0 {
+        0
+    } else {
+        root_offset + root_length
+    };
+    let data_offset = if metadata_length == 0 {
+        root_offset + root_length
+    } else {
+        metadata_offset + metadata_length
+    };
+    Header {
+        root_offset,
+        root_length,
+        metadata_offset,
+        metadata_length,
+        leaf_offset: 0,
+        leaf_length: 0,
+        data_offset,
+        data_length,
+        n_addressed_tiles: tile_count,
+        n_tile_entries: tile_count,
+        n_tile_contents: tile_count,
+        clustered: 0,
+        internal_compression,
+        tile_compression,
+        tile_type,
+        min_zoom,
+        max_zoom,
+        min_longitude: (-180.0 * 10_000_000.0) as i32,
+        min_latitude: (-85.0 * 10_000_000.0) as i32,
+        max_longitude: (180.0 * 10_000_000.0) as i32,
+        max_latitude: (85.0 * 10_000_000.0) as i32,
+        center_zoom: 0,
+        center_longitude: 0,
+        center_latitude: 0,
+    }
+}
+
 fn write_header(mut file: &File, header: &Header) -> Result<()> {
     let mut buf = Vec::with_capacity(HEADER_SIZE);
     buf.extend_from_slice(MAGIC);
@@ -475,6 +527,30 @@ fn decode_internal_bytes(data: Vec<u8>, internal_compression: u8) -> Result<Vec<
     }
 }
 
+fn encode_internal_bytes(data: &[u8], internal_compression: u8) -> Result<Vec<u8>> {
+    match internal_compression {
+        0 => Ok(data.to_vec()),
+        1 => {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder
+                .write_all(data)
+                .context("encode gzip internal data")?;
+            encoder.finish().context("finish gzip internal data")
+        }
+        2 => {
+            let mut compressed = Vec::new();
+            {
+                let mut writer = CompressorWriter::new(&mut compressed, 4096, 5, 22);
+                writer
+                    .write_all(data)
+                    .context("encode brotli internal data")?;
+            }
+            Ok(compressed)
+        }
+        other => anyhow::bail!("unsupported PMTiles internal compression: {other}"),
+    }
+}
+
 fn decode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<u8>> {
     if data.starts_with(&[0x1f, 0x8b]) {
         let mut decoder = GzDecoder::new(data);
@@ -494,6 +570,24 @@ fn decode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<
                 .read_to_end(&mut decoded)
                 .context("decode brotli tile data")?;
             Ok(decoded)
+        }
+        other => anyhow::bail!("unsupported PMTiles tile compression: {other}"),
+    }
+}
+
+fn encode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<u8>> {
+    match tile_compression {
+        0 => Ok(data.to_vec()),
+        1 => encode_tile_payload(data, true),
+        2 => {
+            let mut compressed = Vec::new();
+            {
+                let mut writer = CompressorWriter::new(&mut compressed, 4096, 5, 22);
+                writer
+                    .write_all(data)
+                    .context("encode brotli tile data")?;
+            }
+            Ok(compressed)
         }
         other => anyhow::bail!("unsupported PMTiles tile compression: {other}"),
     }
@@ -1059,6 +1153,7 @@ pub fn prune_pmtiles_layer_only(
     let root_entries =
         read_directory_section(&file, &header, header.root_offset, header.root_length)?;
 
+    let metadata = read_metadata_section(&file, &header)?;
     let keep_layers = style.source_layers();
     let mut stats = PruneStats::default();
     let mut tiles: Vec<(u64, Vec<u8>)> = Vec::new();
@@ -1099,7 +1194,7 @@ pub fn prune_pmtiles_layer_only(
                     apply_filters,
                     &mut stats,
                 )?;
-                let tile_data = encode_tile_payload(&encoded, true)?;
+                let tile_data = encode_tile_payload_pmtiles(&encoded, header.tile_compression)?;
                 tiles.push((tile_id, tile_data));
             }
         }
@@ -1121,12 +1216,27 @@ pub fn prune_pmtiles_layer_only(
     }
 
     let dir_bytes = encode_directory(&entries)?;
-    let header = build_header(
-        dir_bytes.len() as u64,
+    let dir_section = encode_internal_bytes(&dir_bytes, header.internal_compression)?;
+    let metadata_bytes = if metadata.is_empty() {
+        Vec::new()
+    } else {
+        let mut map = serde_json::Map::new();
+        for (key, value) in metadata.into_iter() {
+            map.insert(key, Value::String(value));
+        }
+        let json = Value::Object(map).to_string();
+        encode_internal_bytes(json.as_bytes(), header.internal_compression)?
+    };
+    let header = build_header_with_metadata(
+        dir_section.len() as u64,
+        metadata_bytes.len() as u64,
         data_section.len() as u64,
         entries.len() as u64,
         if min_zoom == u8::MAX { 0 } else { min_zoom },
         if max_zoom == u8::MIN { 0 } else { max_zoom },
+        header.internal_compression,
+        header.tile_compression,
+        header.tile_type,
     );
 
     let file = File::create(output)
@@ -1136,7 +1246,13 @@ pub fn prune_pmtiles_layer_only(
     let mut file = file;
     file.seek(SeekFrom::Start(header.root_offset))
         .context("seek root directory")?;
-    file.write_all(&dir_bytes).context("write root directory")?;
+    file.write_all(&dir_section).context("write root directory")?;
+
+    if !metadata_bytes.is_empty() {
+        file.seek(SeekFrom::Start(header.metadata_offset))
+            .context("seek metadata")?;
+        file.write_all(&metadata_bytes).context("write metadata")?;
+    }
 
     file.seek(SeekFrom::Start(header.data_offset))
         .context("seek data")?;
@@ -1227,8 +1343,8 @@ pub fn pmtiles_to_mbtiles(input: &Path, output: &Path) -> Result<()> {
         .context("seek root directory")?;
     let mut dir_buf = vec![0u8; header.root_length as usize];
     file.read_exact(&mut dir_buf).context("read root directory")?;
-
-    let entries = decode_directory(&dir_buf)?;
+    let dir_bytes = decode_internal_bytes(dir_buf, header.internal_compression)?;
+    let entries = decode_directory(&dir_bytes)?;
 
     let mut output_conn = Connection::open(output)
         .with_context(|| format!("failed to open output mbtiles: {}", output.display()))?;
