@@ -181,13 +181,28 @@ fn inspect_pmtiles_counts_tiles_by_zoom() {
         .expect("inspect pmtiles");
 
     assert_eq!(report.overall.tile_count, 2);
+    assert_eq!(report.overall.total_bytes, 30);
+    assert_eq!(report.overall.max_bytes, 20);
+    assert_eq!(report.overall.avg_bytes, 15);
     assert_eq!(report.by_zoom.len(), 2);
     assert!(report
         .by_zoom
         .iter()
-        .any(|entry| entry.zoom == 0 && entry.stats.tile_count == 1));
+        .any(|entry| {
+            entry.zoom == 0
+                && entry.stats.tile_count == 1
+                && entry.stats.total_bytes == 10
+                && entry.stats.max_bytes == 10
+                && entry.stats.avg_bytes == 10
+        }));
     assert!(report
         .by_zoom
         .iter()
-        .any(|entry| entry.zoom == 1 && entry.stats.tile_count == 1));
+        .any(|entry| {
+            entry.zoom == 1
+                && entry.stats.tile_count == 1
+                && entry.stats.total_bytes == 20
+                && entry.stats.max_bytes == 20
+                && entry.stats.avg_bytes == 20
+        }));
 }
