@@ -140,6 +140,7 @@ fn inspect_mbtiles_topn_and_histogram() {
         no_progress: true,
         zoom: None,
         bucket: None,
+        list_tiles: None,
     };
     let report = inspect_mbtiles_with_options(&path, options).expect("inspect");
     assert_eq!(report.top_tiles.len(), 1);
@@ -161,6 +162,7 @@ fn inspect_mbtiles_sample_count() {
         no_progress: true,
         zoom: None,
         bucket: None,
+        list_tiles: None,
     };
     let report = inspect_mbtiles_with_options(&path, options).expect("inspect");
     assert_eq!(report.sample_used_tiles, 1);

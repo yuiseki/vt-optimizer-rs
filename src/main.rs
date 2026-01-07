@@ -23,6 +23,7 @@ fn main() -> Result<()> {
                 no_progress: args.no_progress,
                 zoom: args.zoom,
                 bucket: args.bucket,
+                list_tiles: None,
             };
             let report = inspect_mbtiles_with_options(&args.input, options)?;
             match args.output {

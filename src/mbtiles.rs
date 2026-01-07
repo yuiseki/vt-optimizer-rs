@@ -33,6 +33,7 @@ pub struct MbtilesReport {
     pub histogram: Vec<HistogramBucket>,
     pub top_tiles: Vec<TopTile>,
     pub bucket_count: Option<u64>,
+    pub bucket_tiles: Vec<TopTile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -64,6 +65,7 @@ pub struct InspectOptions {
     pub no_progress: bool,
     pub zoom: Option<u8>,
     pub bucket: Option<usize>,
+    pub list_tiles: Option<TileListOptions>,
 }
 
 impl Default for InspectOptions {
@@ -75,11 +77,47 @@ impl Default for InspectOptions {
             no_progress: false,
             zoom: None,
             bucket: None,
+            list_tiles: None,
         }
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TileSort {
+    Size,
+    Zxy,
+}
+
+#[derive(Debug, Clone)]
+pub struct TileListOptions {
+    pub limit: usize,
+    pub sort: TileSort,
+}
+
 const EMPTY_TILE_MAX_BYTES: u64 = 50;
+
+fn histogram_bucket_index(
+    value: u64,
+    min_len: Option<u64>,
+    max_len: Option<u64>,
+    buckets: usize,
+) -> Option<usize> {
+    if buckets == 0 {
+        return None;
+    }
+    let min_len = min_len?;
+    let max_len = max_len?;
+    if min_len > max_len {
+        return None;
+    }
+    let range = (max_len - min_len).max(1);
+    let bucket_size = ((range as f64) / buckets as f64).ceil() as u64;
+    let mut bucket = ((value.saturating_sub(min_len)) / bucket_size) as usize;
+    if bucket >= buckets {
+        bucket = buckets - 1;
+    }
+    Some(bucket)
+}
 
 fn finalize_stats(stats: &mut MbtilesStats) {
     if stats.tile_count == 0 {
@@ -275,6 +313,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     let mut max_len: Option<u64> = None;
 
     let mut top_heap: BinaryHeap<Reverse<(u64, u8, u32, u32)>> = BinaryHeap::new();
+    let mut bucket_tiles: Vec<TopTile> = Vec::new();
     let topn = options.topn;
 
     while let Some(row) = rows.next().context("read tile row")? {
@@ -319,6 +358,36 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
                 top_heap.push(Reverse((length, zoom, x, y)));
                 if top_heap.len() > topn {
                     top_heap.pop();
+                }
+            }
+
+            if let (Some(bucket_index), Some(list_options)) =
+                (options.bucket, options.list_tiles.as_ref())
+            {
+                if let Some(bucket_idx) = histogram_bucket_index(
+                    length,
+                    min_len,
+                    max_len,
+                    options.histogram_buckets,
+                ) {
+                    if bucket_idx == bucket_index {
+                        bucket_tiles.push(TopTile {
+                            zoom,
+                            x,
+                            y,
+                            bytes: length,
+                        });
+                        if bucket_tiles.len() > list_options.limit {
+                            if list_options.sort == TileSort::Size {
+                                bucket_tiles.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+                            } else {
+                                bucket_tiles.sort_by(|a, b| {
+                                    (a.zoom, a.x, a.y).cmp(&(b.zoom, b.x, b.y))
+                                });
+                            }
+                            bucket_tiles.truncate(list_options.limit);
+                        }
+                    }
                 }
             }
         }
@@ -393,6 +462,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         histogram,
         top_tiles,
         bucket_count,
+        bucket_tiles,
     })
 }
 

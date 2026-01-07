@@ -57,6 +57,7 @@ fn inspect_zoom_limits_stats_and_histogram() {
         no_progress: true,
         zoom: Some(1),
         bucket: Some(0),
+        list_tiles: None,
     };
 
     let report = inspect_mbtiles_with_options(&path, options).expect("inspect");
