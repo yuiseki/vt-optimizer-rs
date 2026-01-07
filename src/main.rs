@@ -169,9 +169,9 @@ fn main() -> Result<()> {
                         );
                         for bucket in report.histogram.iter() {
                             let warn = if bucket.avg_over_limit {
-                                "!!"
+                                "!! (over)"
                             } else if bucket.avg_near_limit {
-                                "!"
+                                "! (near)"
                             } else {
                                 ""
                             };
