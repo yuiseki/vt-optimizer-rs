@@ -16,6 +16,9 @@ fn main() -> Result<()> {
 
     match cli.command {
         Command::Inspect(args) => {
+            if args.ndjson_lite && args.output != ReportFormat::Ndjson {
+                anyhow::bail!("--ndjson-lite requires --output ndjson");
+            }
             let sample = match args.sample.as_deref() {
                 Some(value) => Some(parse_sample_spec(value)?),
                 None => None,
@@ -80,7 +83,8 @@ fn main() -> Result<()> {
                     println!("{}", json);
                 }
                 ReportFormat::Ndjson => {
-                    for line in ndjson_lines(&report)? {
+                    let include_summary = !args.ndjson_lite;
+                    for line in ndjson_lines(&report, include_summary)? {
                         println!("{}", line);
                     }
                 }

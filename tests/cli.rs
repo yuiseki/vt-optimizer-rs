@@ -119,6 +119,7 @@ fn parse_inspect_options() {
         "20",
         "--sort",
         "zxy",
+        "--ndjson-lite",
     ]);
 
     match cli.command {
@@ -139,6 +140,7 @@ fn parse_inspect_options() {
             assert!(args.list_tiles);
             assert_eq!(args.limit, 20);
             assert_eq!(args.sort, tile_prune::cli::TileSortArg::Zxy);
+            assert!(args.ndjson_lite);
         }
         _ => panic!("expected inspect command"),
     }

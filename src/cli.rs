@@ -73,6 +73,9 @@ pub struct InspectArgs {
 
     #[arg(long, value_enum, default_value_t = TileSortArg::Size)]
     pub sort: TileSortArg,
+
+    #[arg(long, default_value_t = false)]
+    pub ndjson_lite: bool,
 }
 
 #[derive(Debug, Args)]

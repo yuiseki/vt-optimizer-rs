@@ -3,18 +3,20 @@ use serde_json::json;
 
 use crate::mbtiles::MbtilesReport;
 
-pub fn ndjson_lines(report: &MbtilesReport) -> Result<Vec<String>> {
+pub fn ndjson_lines(report: &MbtilesReport, include_summary: bool) -> Result<Vec<String>> {
     let mut lines = Vec::new();
-    lines.push(serde_json::to_string(&json!({
-        "type": "summary",
-        "overall": report.overall,
-        "by_zoom": report.by_zoom,
-        "empty_tiles": report.empty_tiles,
-        "empty_ratio": report.empty_ratio,
-        "sampled": report.sampled,
-        "sample_total_tiles": report.sample_total_tiles,
-        "sample_used_tiles": report.sample_used_tiles,
-    }))?);
+    if include_summary {
+        lines.push(serde_json::to_string(&json!({
+            "type": "summary",
+            "overall": report.overall,
+            "by_zoom": report.by_zoom,
+            "empty_tiles": report.empty_tiles,
+            "empty_ratio": report.empty_ratio,
+            "sampled": report.sampled,
+            "sample_total_tiles": report.sample_total_tiles,
+            "sample_used_tiles": report.sample_used_tiles,
+        }))?);
+    }
 
     if !report.histogram.is_empty() {
         lines.push(serde_json::to_string(&json!({

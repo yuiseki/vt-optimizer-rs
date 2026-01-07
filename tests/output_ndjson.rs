@@ -83,7 +83,7 @@ fn ndjson_splits_histograms_and_top_tile_summaries() {
         ],
     };
 
-    let lines = ndjson_lines(&report).expect("ndjson");
+    let lines = ndjson_lines(&report, true).expect("ndjson");
     let types = lines
         .iter()
         .map(|line| {
@@ -113,4 +113,36 @@ fn ndjson_splits_histograms_and_top_tile_summaries() {
     assert_eq!(top_tile_summary, 2);
     assert_eq!(top_tile, 1);
     assert_eq!(bucket_tile, 1);
+}
+
+#[test]
+fn ndjson_lite_omits_summary() {
+    let report = MbtilesReport {
+        overall: MbtilesStats {
+            tile_count: 1,
+            total_bytes: 10,
+            max_bytes: 10,
+            avg_bytes: 10,
+        },
+        by_zoom: vec![],
+        empty_tiles: 0,
+        empty_ratio: 0.0,
+        sampled: false,
+        sample_total_tiles: 1,
+        sample_used_tiles: 1,
+        histogram: vec![],
+        histograms_by_zoom: vec![],
+        top_tiles: vec![],
+        bucket_count: None,
+        bucket_tiles: vec![],
+        tile_summary: None,
+        recommended_buckets: vec![],
+        top_tile_summaries: vec![],
+    };
+
+    let lines = ndjson_lines(&report, false).expect("ndjson");
+    assert!(
+        !lines.iter().any(|line| line.contains("\"type\":\"summary\"")),
+        "summary line should be omitted"
+    );
 }
