@@ -510,6 +510,13 @@ v0.0.4 では以下を **含めない**。
   * tiles が無い場合は map/images から読み取る
   * optimize/copy/inspect で map/images を扱える
 
+---
+
+## 1.59 マイルストーン（v0.0.58）
+
+* vt-compat と vt-optimizer の出力比較
+  * monaco + osm-fiord で削除数と削除レイヤーが一致
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）
