@@ -11,6 +11,7 @@
         "minzoom",
         "pmtiles",
         "prost",
+        "protoc",
         "Protomaps",
         "rusqlite",
         "serde",

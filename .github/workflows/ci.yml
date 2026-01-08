@@ -20,6 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Install Protocol Buffers Compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -55,6 +60,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Install Protocol Buffers Compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -68,6 +78,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Install Protocol Buffers Compiler
+        uses: arduino/setup-protoc@v3
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
