@@ -63,8 +63,7 @@ impl MapboxStyleLayer {
     }
 
     fn check_zoom_underflow(&self, zoom: u8) -> bool {
-        self.minzoom
-            .is_none_or(|minzoom| (zoom as f64) >= minzoom)
+        self.minzoom.is_none_or(|minzoom| (zoom as f64) >= minzoom)
     }
 
     fn check_zoom_overflow(&self, zoom: u8) -> bool {
