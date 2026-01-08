@@ -6,6 +6,7 @@ A fast CLI to inspect and prune MBTiles/PMTiles vector tiles. It supports a vt-o
 
 - Inspect MBTiles/PMTiles with histograms, layer stats, and summaries
 - Optimize (prune) tiles using style visibility and filters
+- Simplify a target tile by z/x/y with optional tolerance
 - PMTiles input/output for optimize
 - MBTiles `map/images` schema support
 - `vt-compat` mode for vt-optimizer parity (filter ignored)
@@ -63,6 +64,16 @@ vt-optimizer optimize /path/to/tiles.pmtiles \
 vt-optimizer copy /path/to/tiles.mbtiles --output /path/to/tiles.copy.mbtiles
 ```
 
+### Simplify
+
+```bash
+# MBTiles: simplify a single tile (z/x/y) with tolerance
+vt-optimizer simplify /path/to/tiles.mbtiles --z 10 --x 908 --y 396 --tolerance 0.5
+
+# PMTiles: simplify a single tile (z/x/y)
+vt-optimizer simplify /path/to/tiles.pmtiles --z 10 --x 908 --y 396 --tolerance 0.5
+```
+
 ### Legacy (vt-optimizer compatible)
 
 ```bash
@@ -86,6 +97,7 @@ vt-optimizer -m /path/to/tiles.mbtiles -z 10 -x 908 -y 396
 - Unknown filter expressions are treated as **keep** and are reported in the optimize summary.
 - MBTiles with `map/images` schema are supported for inspect/copy/optimize.
 - PMTiles optimize currently rewrites the archive with preserved metadata and compression.
+- simplify outputs a single-tile MBTiles/PMTiles and reports feature/vertex counts in stdout.
 
 ## Development
 
