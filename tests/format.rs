@@ -190,7 +190,7 @@ fn default_output_path_pruned_without_extension() {
 #[test]
 fn default_output_path_pruned_preserves_directory() {
     let path = default_output_path_pruned(Path::new("data/planet.mbtiles"), TileFormat::Mbtiles);
-    assert_eq!(path.as_os_str(), "data/planet.pruned.mbtiles");
+    assert_eq!(path, Path::new("data/planet.pruned.mbtiles"));
 }
 
 #[test]
