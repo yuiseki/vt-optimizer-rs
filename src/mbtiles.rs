@@ -1073,6 +1073,7 @@ fn build_histogram_from_sizes(
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn build_histogram(
     path: &Path,
     sample: Option<&SampleSpec>,
@@ -1420,6 +1421,7 @@ pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesReport> {
     inspect_mbtiles_with_options(path, InspectOptions::default())
 }
 
+#[allow(clippy::unnecessary_unwrap)]
 pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Result<MbtilesReport> {
     ensure_mbtiles_path(path)?;
     let conn = open_readonly_mbtiles(path)?;
