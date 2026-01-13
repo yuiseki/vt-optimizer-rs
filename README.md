@@ -4,6 +4,8 @@ A fast CLI to inspect and optimize MBTiles/PMTiles vector tiles. It supports a v
 
 This project is inspired by and aims to be compatible with ibesora's vt-optimizer. See the original project for reference: https://github.com/ibesora/vt-optimizer
 
+vt-optimizer-rs provides rich CLI options so humans and AI can quickly and deeply inspect vector tiles and optimize them.
+
 ## Features
 
 - Inspect MBTiles/PMTiles with histograms, layer stats, and summaries
