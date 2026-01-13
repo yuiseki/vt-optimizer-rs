@@ -545,6 +545,12 @@ v0.0.4 では以下を **含めない**。
   * text/json/ndjson で一貫して適用
   * `--output` の種類に関わらず指定した項目のみ出力
 
+## 1.64 マイルストーン（v0.1.5）
+
+* `inspect --layers <name1,name2,...>` を追加
+  * file layers / tile summary を指定レイヤのみ表示
+  * `--layer` は非推奨エイリアスとして `--layers` に統合
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）

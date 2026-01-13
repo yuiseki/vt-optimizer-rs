@@ -107,9 +107,13 @@ pub struct InspectArgs {
     #[arg(long, default_value_t = false)]
     pub summary: bool,
 
-    /// Filter tile summary to a specific layer (requires --summary).
-    #[arg(long)]
-    pub layer: Option<String>,
+    /// Filter output to specific layers (comma-separated).
+    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    pub layers: Vec<String>,
+
+    /// Deprecated: use --layers.
+    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    pub layer: Vec<String>,
 
     /// Recommend histogram buckets over/near the size threshold (requires --zoom).
     #[arg(long, default_value_t = false)]

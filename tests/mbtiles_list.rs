@@ -56,7 +56,7 @@ fn list_tiles_sorted_by_size_with_limit() {
         bucket: Some(0),
         tile: None,
         summary: false,
-        layer: None,
+        layers: Vec::new(),
         recommend: false,
         include_layer_list: false,
         list_tiles: Some(TileListOptions {
@@ -87,7 +87,7 @@ fn list_tiles_sorted_by_zxy() {
         bucket: Some(1),
         tile: None,
         summary: false,
-        layer: None,
+        layers: Vec::new(),
         recommend: false,
         include_layer_list: false,
         list_tiles: Some(TileListOptions {

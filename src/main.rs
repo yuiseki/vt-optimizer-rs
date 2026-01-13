@@ -216,7 +216,8 @@ fn main() -> Result<()> {
                     bucket: None,
                     tile: Some(format!("{}/{}/{}", z, x, y)),
                     summary: true,
-                    layer: None,
+                    layers: Vec::new(),
+                    layer: Vec::new(),
                     recommend: false,
                     fast: false,
                     list_tiles: false,
@@ -242,7 +243,8 @@ fn main() -> Result<()> {
                 bucket: None,
                 tile: None,
                 summary: false,
-                layer: None,
+                layers: Vec::new(),
+                layer: Vec::new(),
                 recommend: false,
                 fast: false,
                 list_tiles: false,
@@ -284,9 +286,8 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     if tile.is_some() && !args.summary {
         anyhow::bail!("--tile requires --summary");
     }
-    if args.layer.is_some() && !args.summary {
-        anyhow::bail!("--layer requires --summary");
-    }
+    let mut layers = args.layers.clone();
+    layers.extend(args.layer.clone());
     if args.recommend && args.zoom.is_none() {
         anyhow::bail!("--recommend requires --zoom");
     }
@@ -317,7 +318,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
         bucket: args.bucket,
         tile,
         summary: args.summary,
-        layer: args.layer.clone(),
+        layers,
         recommend: args.recommend,
         include_layer_list: output == ReportFormat::Text,
         list_tiles: if args.list_tiles {

@@ -138,8 +138,8 @@ fn parse_inspect_options() {
         "--tile",
         "3/4/5",
         "--summary",
-        "--layer",
-        "roads",
+        "--layers",
+        "roads,buildings",
         "--recommend",
         "--fast",
         "--list-tiles",
@@ -166,7 +166,10 @@ fn parse_inspect_options() {
             assert_eq!(args.bucket, Some(2));
             assert_eq!(args.tile.as_deref(), Some("3/4/5"));
             assert!(args.summary);
-            assert_eq!(args.layer.as_deref(), Some("roads"));
+            assert_eq!(
+                args.layers,
+                vec!["roads".to_string(), "buildings".to_string()]
+            );
             assert!(args.recommend);
             assert!(args.fast);
             assert!(args.list_tiles);
@@ -192,6 +195,23 @@ fn parse_inspect_output_ndjson() {
     match cli.command {
         Some(Command::Inspect(args)) => {
             assert_eq!(args.output, ReportFormat::Ndjson);
+        }
+        _ => panic!("expected inspect command"),
+    }
+}
+
+#[test]
+fn parse_inspect_layers_deprecated_alias() {
+    let cli = Cli::parse_from([
+        "vt-optimizer",
+        "inspect",
+        "input.mbtiles",
+        "--layer",
+        "roads",
+    ]);
+    match cli.command {
+        Some(Command::Inspect(args)) => {
+            assert_eq!(args.layer, vec!["roads".to_string()]);
         }
         _ => panic!("expected inspect command"),
     }

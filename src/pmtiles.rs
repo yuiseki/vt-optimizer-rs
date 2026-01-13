@@ -1100,8 +1100,12 @@ pub fn inspect_pmtiles_with_options(
         options.histogram_buckets,
         options.max_tile_bytes,
     )?;
-    let file_layers =
+    let mut file_layers =
         build_file_layer_list_pmtiles(&file, &header, &root_entries, options, overall.tile_count)?;
+    if !options.layers.is_empty() {
+        let filter: HashSet<&str> = options.layers.iter().map(|s| s.as_str()).collect();
+        file_layers.retain(|layer| filter.contains(layer.name.as_str()));
+    }
 
     let by_zoom = by_zoom
         .into_iter()

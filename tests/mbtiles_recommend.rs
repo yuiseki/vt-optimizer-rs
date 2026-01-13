@@ -71,7 +71,7 @@ fn inspect_recommend_selects_over_limit_bucket_and_summaries() {
         bucket: None,
         tile: None,
         summary: false,
-        layer: None,
+        layers: Vec::new(),
         recommend: true,
         include_layer_list: false,
         list_tiles: None,

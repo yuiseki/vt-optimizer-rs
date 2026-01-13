@@ -72,7 +72,7 @@ fn inspect_collects_file_layer_list() {
         bucket: None,
         tile: None,
         summary: false,
-        layer: None,
+        layers: Vec::new(),
         recommend: false,
         include_layer_list: true,
         list_tiles: None,
@@ -99,5 +99,40 @@ fn inspect_collects_file_layer_list() {
                 property_value_count: 2,
             },
         ]
+    );
+}
+
+#[test]
+fn inspect_filters_file_layer_list() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("input.mbtiles");
+    create_layer_mbtiles(&path);
+
+    let options = InspectOptions {
+        sample: None,
+        topn: 0,
+        histogram_buckets: 0,
+        no_progress: true,
+        max_tile_bytes: 0,
+        zoom: None,
+        bucket: None,
+        tile: None,
+        summary: false,
+        layers: vec!["roads".to_string()],
+        recommend: false,
+        include_layer_list: true,
+        list_tiles: None,
+    };
+
+    let report = inspect_mbtiles_with_options(&path, options).expect("inspect");
+    assert_eq!(
+        report.file_layers,
+        vec![FileLayerSummary {
+            name: "roads".to_string(),
+            vertex_count: 1,
+            feature_count: 1,
+            property_key_count: 2,
+            property_value_count: 2,
+        }]
     );
 }

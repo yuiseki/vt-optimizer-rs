@@ -146,7 +146,7 @@ pub struct InspectOptions {
     pub bucket: Option<usize>,
     pub tile: Option<TileCoord>,
     pub summary: bool,
-    pub layer: Option<String>,
+    pub layers: Vec<String>,
     pub recommend: bool,
     pub include_layer_list: bool,
     pub list_tiles: Option<TileListOptions>,
@@ -165,7 +165,7 @@ impl Default for InspectOptions {
             bucket: None,
             tile: None,
             summary: false,
-            layer: None,
+            layers: Vec::new(),
             recommend: false,
             include_layer_list: false,
             list_tiles: None,
@@ -915,7 +915,7 @@ fn build_file_layer_list(
 fn build_tile_summary(
     conn: &Connection,
     coord: TileCoord,
-    layer_filter: Option<&str>,
+    layers_filter: &[String],
 ) -> Result<TileSummary> {
     let query = select_tile_data_query(conn)?;
     let data: Vec<u8> = conn
@@ -934,9 +934,14 @@ fn build_tile_summary(
     let mut tile_keys: HashSet<String> = HashSet::new();
     let mut tile_values: HashSet<String> = HashSet::new();
     let mut summaries = Vec::new();
+    let filter_set = if layers_filter.is_empty() {
+        None
+    } else {
+        Some(layers_filter.iter().cloned().collect::<HashSet<_>>())
+    };
     for layer in layers {
-        if let Some(filter) = layer_filter {
-            if layer.name != filter {
+        if let Some(filter) = filter_set.as_ref() {
+            if !filter.contains(&layer.name) {
                 continue;
             }
         }
@@ -1496,7 +1501,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
 
     let tile_summary = if options.summary {
         let coord = options.tile.context("--summary requires --tile z/x/y")?;
-        Some(build_tile_summary(&conn, coord, options.layer.as_deref())?)
+        Some(build_tile_summary(&conn, coord, &options.layers)?)
     } else {
         None
     };
@@ -1699,7 +1704,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     progress.finish();
 
     // Build layer list from collected samples or full scan
-    let file_layers = if collect_layers && !layer_accums.is_empty() {
+    let mut file_layers = if collect_layers && !layer_accums.is_empty() {
         // Build from sampled tiles
         let mut result = layer_accums
             .into_iter()
@@ -1718,6 +1723,10 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     } else {
         Vec::new()
     };
+    if !options.layers.is_empty() {
+        let filter: HashSet<&str> = options.layers.iter().map(|s| s.as_str()).collect();
+        file_layers.retain(|layer| filter.contains(layer.name.as_str()));
+    }
 
     let by_zoom = by_zoom
         .into_iter()
@@ -1851,7 +1860,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
                         x: tile.x,
                         y: tile.y,
                     },
-                    None,
+                    &[],
                 )
             })
             .collect::<Result<Vec<_>>>()?
