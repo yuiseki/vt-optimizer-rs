@@ -30,6 +30,18 @@ fmt-check: ## Check code formatting without making changes
 clippy: ## Run clippy linter
 	cargo clippy --all-targets --all-features -- -D warnings
 
+bump-version: ## Bump package version (requires VERSION env)
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Error: VERSION is not set. Example: VERSION=0.2.0 make bump-version"; \
+		exit 1; \
+	fi
+	@if command -v cargo-set-version >/dev/null 2>&1; then \
+		cargo set-version "$(VERSION)"; \
+	else \
+		sed -i -E 's/^version = \".*\"/version = \"$(VERSION)\"/' Cargo.toml; \
+	fi
+	cargo check --quiet
+
 clean: ## Clean build artifacts
 	cargo clean
 	rm -rf target/
