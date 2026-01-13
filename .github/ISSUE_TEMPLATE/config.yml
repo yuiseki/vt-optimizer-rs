@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: TBD_UNVT_SECURITY_CONTACT
+    about: Report security vulnerabilities privately.
+  - name: General questions
+    url: TBD_UNVT_CONTACT
+    about: Contact the maintainers for general questions.

@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a bug to help us improve vt-optimizer-rs.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include as much detail as possible.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the issue and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact commands and a minimal dataset if possible.
+      placeholder: |
+        1. Command ...
+        2. Input ...
+        3. Output ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs/output
+      description: Paste relevant output or error logs.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `vt-optimizer --version` or git commit.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Rust version, and any other relevant details.

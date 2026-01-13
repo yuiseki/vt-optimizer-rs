@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an improvement or new feature.
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Please describe the use case and expected outcome.
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Describe who needs this and why (UNVT/SDGs context if applicable).
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How should this work?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways to solve the problem.
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility impact
+      description: Any breaking changes or migration considerations?
