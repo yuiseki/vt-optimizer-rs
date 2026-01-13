@@ -36,7 +36,7 @@ bump-version: ## Bump package version (requires VERSION env, optional BUMP_BRANC
 		exit 1; \
 	fi
 	@if [ "$(BUMP_BRANCH)" = "1" ]; then \
-		branch="release/v$(VERSION)"; \
+		branch="bump/v$(VERSION)"; \
 		git switch -c "$$branch" 2>/dev/null || git switch "$$branch"; \
 	fi
 	@if command -v cargo-set-version >/dev/null 2>&1; then \
