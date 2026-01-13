@@ -77,11 +77,39 @@ jobs:
               return;
             }
 
+            const { data: commits } = await github.rest.repos.compareCommits({
+              owner,
+              repo,
+              base,
+              head: 'main',
+              per_page: 100,
+            });
+
+            const prMap = new Map();
+            for (const commit of commits.commits || []) {
+              const { data: assoc } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: commit.sha,
+              });
+              for (const pr of assoc) {
+                if (pr.merged_at && pr.base && pr.base.ref === 'main') {
+                  prMap.set(pr.number, pr);
+                }
+              }
+            }
+
+            const prList = Array.from(prMap.values()).sort((a, b) => a.number - b.number);
+            const prLines = prList.map((pr) => `- ${pr.html_url} by @${pr.user.login}`);
+            const summary = prLines.length > 0
+              ? `## Included PRs\n\n${prLines.join('\\n')}`
+              : 'No merged PRs found between main and release.';
+
             await github.rest.pulls.create({
               owner,
               repo,
               head: 'main',
               base,
               title: 'Merge main into release',
-              body: 'Automated PR to promote main into release. Review and merge when ready.',
+              body: `Automated PR to promote main into release. Review and merge when ready.\n\n${summary}`,
             });
