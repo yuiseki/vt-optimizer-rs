@@ -96,7 +96,7 @@ jobs:
 
       - name: Verify tag matches Cargo.toml version
         run: |
-          version=$(grep -E '^version = ' Cargo.toml | head -n 1 | sed -E 's/version = \"(.*)\"/\\1/')
+          version=$(grep -E '^version = ' Cargo.toml | head -n 1 | sed -E 's/version = \"(.*)\"/\1/')
           tag="${{ inputs.tag }}"
           tag="${tag#v}"
           echo "Cargo.toml version: ${version}"
