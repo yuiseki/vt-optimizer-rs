@@ -1,0 +1,7 @@
+# cargo-release configuration
+allow-branch = ["main"]
+publish = false
+push = false
+tag-prefix = "v"
+tag-name = "v{{version}}"
+pre-release-commit-message = "Release {{version}}"
