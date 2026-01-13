@@ -64,19 +64,6 @@ jobs:
               return;
             }
 
-            const { data: prs } = await github.rest.pulls.list({
-              owner,
-              repo,
-              state: 'open',
-              head,
-              base,
-            });
-
-            if (prs.length > 0) {
-              core.info('Open PR already exists.');
-              return;
-            }
-
             const prMap = new Map();
 
             async function addPrByNumber(number) {
@@ -159,11 +146,34 @@ jobs:
               }
             }
 
+            const { data: prs } = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: 'open',
+              head,
+              base,
+            });
+
+            const body = `Automated PR to promote main into release. Review and merge when ready.\n\n${summary}`;
+
+            if (prs.length > 0) {
+              const pr = prs[0];
+              await github.rest.pulls.update({
+                owner,
+                repo,
+                pull_number: pr.number,
+                title,
+                body,
+              });
+              core.info(`Updated existing PR #${pr.number}.`);
+              return;
+            }
+
             await github.rest.pulls.create({
               owner,
               repo,
               head: 'main',
               base,
               title,
-              body: `Automated PR to promote main into release. Review and merge when ready.\n\n${summary}`,
+              body,
             });
