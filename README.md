@@ -21,6 +21,16 @@ Build from source:
 cargo build --release
 ```
 
+## Quickstart
+
+```bash
+# build
+cargo build --release
+
+# inspect a tileset
+./target/release/vt-optimizer inspect /path/to/tiles.mbtiles
+```
+
 ## Usage
 
 This project ships a `vt-optimizer` CLI. It supports both the modern subcommands and a vt-optimizer compatible legacy interface (no subcommand).
@@ -106,3 +116,18 @@ vt-optimizer -m /path/to/tiles.mbtiles -z 10 -x 908 -y 396
 ```bash
 cargo test
 ```
+
+## DPG context
+
+vt-optimizer-rs is intended for public-interest geospatial workflows, including UNVT use cases. The project follows Digital Public Goods (DPG) guidelines and provides documentation to support transparent ownership, privacy, and safe use.
+
+## DPG documentation links
+
+- docs/DPG.md
+- GOVERNANCE.md
+- MAINTAINERS.md
+- SECURITY.md
+- SUPPORT.md
+- PRIVACY.md
+- DO_NO_HARM.md
+- docs/DATA_EXPORT.md
