@@ -20,12 +20,32 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
-## [0.0.1] - 2026-01-13
+## [0.1.5] - 2026-01-13
 
 ### Added
-- Inspect MBTiles/PMTiles with histograms, layer stats, and summaries.
-- Optimize (prune) tiles using Mapbox/MapLibre style visibility and filters.
-- Simplify a single tile with optional tolerance.
-- PMTiles input/output for optimize.
-- MBTiles `map/images` schema support.
-- `vt-compat` mode to match vt-optimizer visibility behavior.
+- inspect `--layers` filter for file layers and tile summaries.
+
+## [0.1.4] - 2026-01-13
+
+### Changed
+- Allow `inspect --stats` without value to show possible values.
+
+## [0.1.3] - 2026-01-13
+
+### Changed
+- Require `make fmt` and `make clippy` before every commit (AGENTS update).
+
+## [0.1.2] - 2026-01-13
+
+### Added
+- Tile summary per-layer vertex/value counts.
+
+## [0.1.1] - 2026-01-13
+
+### Added
+- Tile summary totals.
+
+## [0.1.0] - 2026-01-08
+
+### Changed
+- Removed aarch64-unknown-linux-gnu target from release workflow.
