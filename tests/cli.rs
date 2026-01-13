@@ -1,7 +1,7 @@
 use clap::{CommandFactory, Parser};
 
 use vt_optimizer::cli::ReportFormat;
-use vt_optimizer::cli::{Cli, Command, StyleMode};
+use vt_optimizer::cli::{Cli, Command, StyleMode, TileInfoFormat};
 
 #[test]
 fn parse_optimize_minimal() {
@@ -147,6 +147,8 @@ fn parse_inspect_options() {
         "zxy",
         "--ndjson-lite",
         "--ndjson-compact",
+        "--tile-info-format",
+        "compact",
     ]);
 
     match cli.command {
@@ -169,6 +171,7 @@ fn parse_inspect_options() {
             assert_eq!(args.sort, vt_optimizer::cli::TileSortArg::Zxy);
             assert!(args.ndjson_lite);
             assert!(args.ndjson_compact);
+            assert_eq!(args.tile_info_format, TileInfoFormat::Compact);
         }
         _ => panic!("expected inspect command"),
     }
@@ -204,4 +207,5 @@ fn inspect_help_describes_fields() {
     assert!(help.contains("Fast defaults"));
     assert!(help.contains("Histogram bucket index"));
     assert!(help.contains("NDJSON"));
+    assert!(help.contains("Tile summary detail level"));
 }

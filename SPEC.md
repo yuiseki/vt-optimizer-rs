@@ -533,6 +533,12 @@ v0.0.4 では以下を **含めない**。
   * `# of values`（property value のユニーク数）
 * `--recommend` の top tile summaries にも同一情報を含める
 
+## 1.62 マイルストーン（v0.1.3）
+
+* `inspect --tile --summary` の出力粒度を制御する `--tile-info-format <full|compact>` を追加
+  * `compact` は keys の一覧を省略（text/json/ndjson 共通）
+  * 既定は `full`
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）

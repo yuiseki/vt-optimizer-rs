@@ -96,6 +96,7 @@ pub struct LayerSummary {
     pub vertex_count: u64,
     pub property_key_count: usize,
     pub property_value_count: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub property_keys: Vec<String>,
 }
 

@@ -134,6 +134,10 @@ pub struct InspectArgs {
     /// NDJSON: compact payloads and force --output ndjson.
     #[arg(long, default_value_t = false)]
     pub ndjson_compact: bool,
+
+    /// Tile summary detail level (full or compact).
+    #[arg(long, value_enum, default_value_t = TileInfoFormat::Full)]
+    pub tile_info_format: TileInfoFormat,
 }
 
 #[derive(Debug, Args)]
@@ -221,6 +225,12 @@ pub enum StyleMode {
     LayerFilter,
     #[value(name = "vt-compat")]
     VtCompat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum TileInfoFormat {
+    Full,
+    Compact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

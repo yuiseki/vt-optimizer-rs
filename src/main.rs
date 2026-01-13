@@ -223,6 +223,7 @@ fn main() -> Result<()> {
                     sort: vt_optimizer::cli::TileSortArg::Size,
                     ndjson_lite: false,
                     ndjson_compact: false,
+                    tile_info_format: vt_optimizer::cli::TileInfoFormat::Full,
                 };
                 run_inspect(args)?;
                 return Ok(());
@@ -247,6 +248,7 @@ fn main() -> Result<()> {
                 sort: vt_optimizer::cli::TileSortArg::Size,
                 ndjson_lite: false,
                 ndjson_compact: false,
+                tile_info_format: vt_optimizer::cli::TileInfoFormat::Full,
             };
             run_inspect(args)?;
         }
@@ -338,6 +340,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             inspect_pmtiles_with_options(&args.input, &options)?
         }
     };
+    let report = vt_optimizer::output::apply_tile_info_format(report, args.tile_info_format);
     match output {
         ReportFormat::Json => {
             let json = serde_json::to_string_pretty(&report)?;

@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
+use vt_optimizer::cli::TileInfoFormat;
 use vt_optimizer::mbtiles::{
     HistogramBucket, MbtilesReport, MbtilesStats, MbtilesZoomStats, TileSummary, TopTile,
     ZoomHistogram,
 };
-use vt_optimizer::output::{ndjson_lines, resolve_output_format, NdjsonOptions};
+use vt_optimizer::output::{apply_tile_info_format, ndjson_lines, resolve_output_format, NdjsonOptions};
 
 #[test]
 fn ndjson_splits_histograms_and_top_tile_summaries() {
@@ -383,6 +384,65 @@ fn ndjson_compact_omits_summary_even_when_requested() {
             .any(|line| line.contains("\"type\":\"summary\"")),
         "compact mode should omit summary"
     );
+}
+
+#[test]
+fn ndjson_tile_info_format_compact_omits_property_keys() {
+    let report = MbtilesReport {
+        metadata: BTreeMap::new(),
+        overall: MbtilesStats {
+            tile_count: 1,
+            total_bytes: 10,
+            max_bytes: 10,
+            avg_bytes: 10,
+        },
+        by_zoom: vec![],
+        empty_tiles: 0,
+        empty_ratio: 0.0,
+        sampled: false,
+        sample_total_tiles: 1,
+        sample_used_tiles: 1,
+        histogram: vec![],
+        histograms_by_zoom: vec![],
+        file_layers: vec![],
+        top_tiles: vec![],
+        bucket_count: None,
+        bucket_tiles: vec![],
+        tile_summary: Some(TileSummary {
+            zoom: 2,
+            x: 2,
+            y: 2,
+            layer_count: 1,
+            total_features: 1,
+            vertex_count: 1,
+            property_key_count: 1,
+            property_value_count: 1,
+            layers: vec![vt_optimizer::mbtiles::LayerSummary {
+                name: "roads".to_string(),
+                feature_count: 1,
+                vertex_count: 1,
+                property_key_count: 1,
+                property_value_count: 1,
+                property_keys: vec!["name".to_string()],
+            }],
+        }),
+        recommended_buckets: vec![],
+        top_tile_summaries: vec![],
+    };
+
+    let report = apply_tile_info_format(report, TileInfoFormat::Compact);
+    let lines = ndjson_lines(
+        &report,
+        NdjsonOptions {
+            include_summary: true,
+            compact: false,
+        },
+    )
+    .expect("ndjson");
+    let has_property_keys = lines
+        .iter()
+        .any(|line| line.contains("\"property_keys\""));
+    assert!(!has_property_keys);
 }
 
 #[test]

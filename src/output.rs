@@ -2,7 +2,7 @@ use anyhow::Result;
 use nu_ansi_term::Color;
 use serde_json::json;
 
-use crate::cli::ReportFormat;
+use crate::cli::{ReportFormat, TileInfoFormat};
 use std::collections::BTreeMap;
 
 use crate::mbtiles::{HistogramBucket, MbtilesReport, ZoomHistogram};
@@ -19,6 +19,22 @@ pub fn resolve_output_format(requested: ReportFormat, ndjson_compact: bool) -> R
 pub struct NdjsonOptions {
     pub include_summary: bool,
     pub compact: bool,
+}
+
+pub fn apply_tile_info_format(mut report: MbtilesReport, format: TileInfoFormat) -> MbtilesReport {
+    if matches!(format, TileInfoFormat::Compact) {
+        if let Some(summary) = report.tile_summary.as_mut() {
+            for layer in summary.layers.iter_mut() {
+                layer.property_keys.clear();
+            }
+        }
+        for summary in report.top_tile_summaries.iter_mut() {
+            for layer in summary.layers.iter_mut() {
+                layer.property_keys.clear();
+            }
+        }
+    }
+    report
 }
 
 pub fn ndjson_lines(report: &MbtilesReport, mut options: NdjsonOptions) -> Result<Vec<String>> {
