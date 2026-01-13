@@ -58,3 +58,15 @@ fn apply_stats_filter_removes_unlisted_sections() {
     assert!(report.bucket_count.is_none());
     assert_eq!(report.overall.tile_count, 1);
 }
+
+#[test]
+fn parse_stats_filter_rejects_empty_list() {
+    let err = parse_stats_filter(Some("")).expect_err("empty list should error");
+    assert!(err.to_string().contains("possible values"));
+}
+
+#[test]
+fn parse_stats_filter_rejects_unknown_section() {
+    let err = parse_stats_filter(Some("unknown")).expect_err("unknown should error");
+    assert!(err.to_string().contains("possible values"));
+}

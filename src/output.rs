@@ -72,12 +72,19 @@ pub fn parse_stats_filter(value: Option<&str>) -> Result<StatsFilter> {
             "top_tiles" | "top_tile" => StatsSection::TopTiles,
             "tile_summary" => StatsSection::TileSummary,
             "top_tile_summaries" | "top_tile_summary" => StatsSection::TopTileSummaries,
-            _ => return Err(anyhow::anyhow!("unknown stats section: {}", token)),
+            _ => {
+                return Err(anyhow::anyhow!(
+                    "unknown stats section: {} (possible values: metadata, summary, zoom, histogram, histogram_by_zoom, layers, recommendations, bucket, bucket_tiles, top_tiles, tile_summary, top_tile_summaries, all)",
+                    token
+                ))
+            }
         };
         sections.insert(section);
     }
     if sections.is_empty() {
-        return Err(anyhow::anyhow!("stats list must not be empty"));
+        return Err(anyhow::anyhow!(
+            "stats list must not be empty (possible values: metadata, summary, zoom, histogram, histogram_by_zoom, layers, recommendations, bucket, bucket_tiles, top_tiles, tile_summary, top_tile_summaries, all)"
+        ));
     }
     Ok(StatsFilter {
         include_all: false,
