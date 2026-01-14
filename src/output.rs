@@ -6,7 +6,7 @@ use crate::cli::{ReportFormat, TileInfoFormat};
 use std::collections::BTreeMap;
 
 use crate::mbtiles::{
-    FileLayerSummary, HistogramBucket, MbtilesReport, TileSummary, ZoomHistogram,
+    FileLayerSummary, HistogramBucket, MbtilesReport, MbtilesZoomStats, TileSummary, ZoomHistogram,
 };
 
 use std::collections::BTreeSet;
@@ -385,6 +385,94 @@ pub fn format_histogram_table(buckets: &[HistogramBucket]) -> Vec<String> {
             bucket.accum_pct_tiles * 100.0,
             bucket.accum_pct_level_bytes * 100.0,
             warn
+        ));
+    }
+    lines
+}
+
+pub fn format_zoom_table(
+    stats: &[MbtilesZoomStats],
+    total_tiles: u64,
+    total_bytes: u64,
+) -> Vec<String> {
+    if stats.is_empty() {
+        return Vec::new();
+    }
+    let mut items = stats.to_vec();
+    items.sort_by_key(|item| item.zoom);
+    let zoom_width = items
+        .iter()
+        .map(|item| item.zoom.to_string().len())
+        .max()
+        .unwrap_or(0)
+        .max("zoom".len());
+    let tiles_width = items
+        .iter()
+        .map(|item| item.stats.tile_count.to_string().len())
+        .max()
+        .unwrap_or(0)
+        .max("tiles".len());
+    let total_width = items
+        .iter()
+        .map(|item| format_bytes(item.stats.total_bytes).len())
+        .max()
+        .unwrap_or(0)
+        .max("total".len());
+    let max_width = items
+        .iter()
+        .map(|item| format_bytes(item.stats.max_bytes).len())
+        .max()
+        .unwrap_or(0)
+        .max("max".len());
+    let avg_width = items
+        .iter()
+        .map(|item| format_bytes(item.stats.avg_bytes).len())
+        .max()
+        .unwrap_or(0)
+        .max("avg".len());
+    let pct_tiles = |count: u64| {
+        if total_tiles == 0 {
+            0.0
+        } else {
+            (count as f64 / total_tiles as f64) * 100.0
+        }
+    };
+    let pct_bytes = |bytes: u64| {
+        if total_bytes == 0 {
+            0.0
+        } else {
+            (bytes as f64 / total_bytes as f64) * 100.0
+        }
+    };
+    let mut lines = Vec::with_capacity(items.len() + 1);
+    lines.push(format!(
+        "  {} {} {} {} {} {} {} {} {}",
+        pad_right("zoom", zoom_width),
+        pad_left("tiles", tiles_width),
+        pad_left("total", total_width),
+        pad_left("max", max_width),
+        pad_left("avg", avg_width),
+        pad_left("%tiles", 8),
+        pad_left("%size", 8),
+        pad_left("acc%tiles", 10),
+        pad_left("acc%size", 10),
+    ));
+    let mut acc_tiles = 0u64;
+    let mut acc_bytes = 0u64;
+    for item in items {
+        acc_tiles = acc_tiles.saturating_add(item.stats.tile_count);
+        acc_bytes = acc_bytes.saturating_add(item.stats.total_bytes);
+        lines.push(format!(
+            "  {} {} {} {} {} {:>7.2}% {:>7.2}% {:>9.2}% {:>9.2}%",
+            pad_right(&item.zoom.to_string(), zoom_width),
+            pad_left(&item.stats.tile_count.to_string(), tiles_width),
+            pad_left(&format_bytes(item.stats.total_bytes), total_width),
+            pad_left(&format_bytes(item.stats.max_bytes), max_width),
+            pad_left(&format_bytes(item.stats.avg_bytes), avg_width),
+            pct_tiles(item.stats.tile_count),
+            pct_bytes(item.stats.total_bytes),
+            pct_tiles(acc_tiles),
+            pct_bytes(acc_bytes),
         ));
     }
     lines
