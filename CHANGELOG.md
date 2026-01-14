@@ -20,6 +20,16 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.4.3] - 2026-01-14
+### Added
+- Add a "Top 10 big tiles" section to inspect text output (respects --zoom).
+- Allow `inspect -z/-x/-y` to show tile summaries in compat-style arguments.
+- Document an inspect workflow and tips in HOW_TO.
+
+### Changed
+- Hide Metadata/Summary/Histogram/Layers output when `-x/-y` are provided.
+- Skip "Top 10 big tiles" output when `-x/-y` are provided.
+
 ## [0.4.2] - 2026-01-14
 ### Changed
 - Improve inspect text output readability (summary list items, zoom table with percentages).

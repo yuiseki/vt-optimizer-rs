@@ -33,6 +33,10 @@ Optional: create a local release branch name to mirror the target version:
 VERSION=0.2.0 BUMP_BRANCH=1 make bump-version
 ```
 
+## Changelog updates
+
+- Always update `CHANGELOG.md` with user-visible changes before release.
+
 ## Notes
 
 - Only maintainers should merge into `release`.
