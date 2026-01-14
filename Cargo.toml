@@ -9,6 +9,19 @@ repository = "https://github.com/yuiseki/vt-optimizer-rs"
 readme = "README.md"
 keywords = ["vt-optimizer", "vector-tiles", "mbtiles", "pmtiles", "geospatial", "cli", "optimizer"]
 categories = ["command-line-utilities"]
+exclude = [
+	".cargo_vcs_info.json",
+	"Cargo.toml.orig",
+	"Cargo.lock",
+	".vscode/*",
+	".github/*",
+	".gitignore",
+	".env.sample",
+	"release.toml",
+	"renovate.json",
+	"tmp/**",
+	"target/**",
+]
 
 [dependencies]
 anyhow = "1"
