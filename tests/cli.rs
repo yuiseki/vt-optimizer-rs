@@ -163,6 +163,8 @@ fn parse_inspect_options() {
             assert_eq!(args.stats.as_deref(), Some("summary,zoom"));
             assert!(args.no_progress);
             assert_eq!(args.zoom, Some(3));
+            assert_eq!(args.x, None);
+            assert_eq!(args.y, None);
             assert_eq!(args.bucket, Some(2));
             assert_eq!(args.tile.as_deref(), Some("3/4/5"));
             assert!(args.summary);
@@ -178,6 +180,29 @@ fn parse_inspect_options() {
             assert!(args.ndjson_lite);
             assert!(args.ndjson_compact);
             assert_eq!(args.tile_info_format, TileInfoFormat::Compact);
+        }
+        _ => panic!("expected inspect command"),
+    }
+}
+
+#[test]
+fn parse_inspect_tile_coords_short_flags() {
+    let cli = Cli::parse_from([
+        "vt-optimizer",
+        "inspect",
+        "input.mbtiles",
+        "-z",
+        "5",
+        "-x",
+        "16",
+        "-y",
+        "20",
+    ]);
+    match cli.command {
+        Some(Command::Inspect(args)) => {
+            assert_eq!(args.zoom, Some(5));
+            assert_eq!(args.x, Some(16));
+            assert_eq!(args.y, Some(20));
         }
         _ => panic!("expected inspect command"),
     }

@@ -92,8 +92,16 @@ pub struct InspectArgs {
     pub no_progress: bool,
 
     /// Limit inspection to a specific zoom level.
-    #[arg(long)]
+    #[arg(long, short = 'z')]
     pub zoom: Option<u8>,
+
+    /// Tile x (use with -z/--zoom and -y to show tile summary).
+    #[arg(short = 'x')]
+    pub x: Option<u32>,
+
+    /// Tile y (use with -z/--zoom and -x to show tile summary).
+    #[arg(short = 'y')]
+    pub y: Option<u32>,
 
     /// Histogram bucket index (0-based) used with --list-tiles.
     #[arg(long)]

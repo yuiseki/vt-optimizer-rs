@@ -13,8 +13,8 @@ use vt_optimizer::mbtiles::{
 };
 use vt_optimizer::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,
-    format_metadata_section, format_zoom_table, ndjson_lines, pad_left, pad_right,
-    resolve_output_format,
+    format_metadata_section, format_top_tiles_lines, format_zoom_table, ndjson_lines, pad_left,
+    pad_right, resolve_output_format,
 };
 use vt_optimizer::pmtiles::{
     inspect_pmtiles_with_options, mbtiles_to_pmtiles, pmtiles_to_mbtiles, prune_pmtiles_layer_only,
@@ -220,6 +220,8 @@ fn main() -> Result<()> {
                     stats: Some("tile_summary".to_string()),
                     no_progress: false,
                     zoom: None,
+                    x: None,
+                    y: None,
                     bucket: None,
                     tile: Some(format!("{}/{}/{}", z, x, y)),
                     summary: true,
@@ -247,6 +249,8 @@ fn main() -> Result<()> {
                 stats: None,
                 no_progress: false,
                 zoom: None,
+                x: None,
+                y: None,
                 bucket: None,
                 tile: None,
                 summary: false,
@@ -284,14 +288,25 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
         Some(value) => Some(parse_sample_spec(value)?),
         None => None,
     };
-    let tile = match args.tile.as_deref() {
+    let mut tile = match args.tile.as_deref() {
         Some(value) => Some(parse_tile_spec(value)?),
         None => None,
     };
-    if args.summary && tile.is_none() {
+    if tile.is_some() && (args.x.is_some() || args.y.is_some()) {
+        anyhow::bail!("--tile cannot be combined with -x/-y");
+    }
+    if tile.is_none() {
+        if let (Some(z), Some(x), Some(y)) = (args.zoom, args.x, args.y) {
+            tile = Some(vt_optimizer::mbtiles::TileCoord { zoom: z, x, y });
+        } else if args.x.is_some() || args.y.is_some() {
+            anyhow::bail!("-x/-y require -z/--zoom");
+        }
+    }
+    let summary = args.summary || (tile.is_some() && args.tile.is_none() && args.x.is_some());
+    if summary && tile.is_none() {
         anyhow::bail!("--summary requires --tile z/x/y");
     }
-    if tile.is_some() && !args.summary {
+    if tile.is_some() && !summary {
         anyhow::bail!("--tile requires --summary");
     }
     let mut layers = args.layers.clone();
@@ -307,7 +322,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     } else {
         args.topn
     };
-    let (sample, topn, histogram_buckets) = if args.fast {
+    let (sample, mut topn, histogram_buckets) = if args.fast {
         (
             Some(vt_optimizer::mbtiles::SampleSpec::Ratio(0.1)),
             Some(5),
@@ -316,16 +331,20 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     } else {
         (sample, topn, args.histogram_buckets as usize)
     };
+    if output == ReportFormat::Text && topn.unwrap_or(0) == 0 {
+        topn = Some(10);
+    }
+    let topn_value = topn.unwrap_or(0) as usize;
     let options = InspectOptions {
         sample,
-        topn: topn.unwrap_or(0) as usize,
+        topn: topn_value,
         histogram_buckets,
         no_progress: args.no_progress,
         max_tile_bytes: args.max_tile_bytes,
         zoom: args.zoom,
         bucket: args.bucket,
         tile,
-        summary: args.summary,
+        summary,
         layers,
         recommend: args.recommend,
         include_layer_list: output == ReportFormat::Text
@@ -390,26 +409,28 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             let include_histogram_by_zoom = args.stats.is_some()
                 && stats_filter.includes(vt_optimizer::output::StatsSection::HistogramByZoom);
             let include_layers = stats_filter.includes(vt_optimizer::output::StatsSection::Layers);
+            let hide_tile_summary_sections = args.x.is_some() && args.y.is_some();
             let include_recommendations =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Recommendations);
             let include_bucket = stats_filter.includes(vt_optimizer::output::StatsSection::Bucket);
             let include_bucket_tiles =
                 stats_filter.includes(vt_optimizer::output::StatsSection::BucketTiles);
-            let include_top_tiles =
-                stats_filter.includes(vt_optimizer::output::StatsSection::TopTiles);
+            let include_top_tiles = stats_filter
+                .includes(vt_optimizer::output::StatsSection::TopTiles)
+                && !hide_tile_summary_sections;
             let include_top_tile_summaries =
                 stats_filter.includes(vt_optimizer::output::StatsSection::TopTileSummaries);
             let include_tile_summary =
                 stats_filter.includes(vt_optimizer::output::StatsSection::TileSummary);
             println!("{}", format_inspect_title(&args.input));
             println!();
-            if include_metadata && !report.metadata.is_empty() {
+            if include_metadata && !hide_tile_summary_sections && !report.metadata.is_empty() {
                 for line in format_metadata_section(&report.metadata) {
                     println!("{}", emphasize_section_heading(&line));
                 }
                 println!();
             }
-            if include_summary {
+            if include_summary && !hide_tile_summary_sections {
                 println!("{}", emphasize_section_heading("## Summary"));
                 println!(
                     "{}",
@@ -490,21 +511,24 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                     );
                 }
             }
-            if include_histogram && !report.histogram.is_empty() {
+            if include_histogram && !hide_tile_summary_sections && !report.histogram.is_empty() {
                 println!();
                 println!("{}", emphasize_section_heading("## Histogram"));
                 for line in format_histogram_table(&report.histogram) {
                     println!("{}", emphasize_table_header(&line));
                 }
             }
-            if include_histogram_by_zoom && !report.histograms_by_zoom.is_empty() {
+            if include_histogram_by_zoom
+                && !hide_tile_summary_sections
+                && !report.histograms_by_zoom.is_empty()
+            {
                 println!();
                 for line in format_histograms_by_zoom_section(&report.histograms_by_zoom) {
                     let line = emphasize_section_heading(&line);
                     println!("{}", emphasize_table_header(&line));
                 }
             }
-            if include_layers && !report.file_layers.is_empty() {
+            if include_layers && !hide_tile_summary_sections && !report.file_layers.is_empty() {
                 println!();
                 println!("{}", emphasize_section_heading("## Layers"));
                 let name_width = report
@@ -600,12 +624,12 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             }
             if include_top_tiles && !report.top_tiles.is_empty() {
                 println!();
-                println!("{}", emphasize_section_heading("## Top Tiles"));
-                for tile in report.top_tiles.iter() {
-                    println!(
-                        "- z={}: x={} y={} bytes={}",
-                        tile.zoom, tile.x, tile.y, tile.bytes
-                    );
+                println!(
+                    "{}",
+                    emphasize_section_heading(&format!("## Top {} big tiles", topn_value))
+                );
+                for line in format_top_tiles_lines(&report.top_tiles) {
+                    println!("{}", line);
                 }
             }
             if include_top_tile_summaries && !report.top_tile_summaries.is_empty() {
