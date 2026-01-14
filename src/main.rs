@@ -13,7 +13,8 @@ use vt_optimizer::mbtiles::{
 };
 use vt_optimizer::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,
-    format_metadata_section, ndjson_lines, pad_left, pad_right, resolve_output_format,
+    format_metadata_section, format_zoom_table, ndjson_lines, pad_left, pad_right,
+    resolve_output_format,
 };
 use vt_optimizer::pmtiles::{
     inspect_pmtiles_with_options, mbtiles_to_pmtiles, pmtiles_to_mbtiles, prune_pmtiles_layer_only,
@@ -382,11 +383,12 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 stats_filter.includes(vt_optimizer::output::StatsSection::Metadata);
             let include_summary =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Summary);
-            let include_zoom = stats_filter.includes(vt_optimizer::output::StatsSection::Zoom);
+            let include_zoom = stats_filter.includes(vt_optimizer::output::StatsSection::Zoom)
+                && args.zoom.is_none();
             let include_histogram =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Histogram);
-            let include_histogram_by_zoom =
-                stats_filter.includes(vt_optimizer::output::StatsSection::HistogramByZoom);
+            let include_histogram_by_zoom = args.stats.is_some()
+                && stats_filter.includes(vt_optimizer::output::StatsSection::HistogramByZoom);
             let include_layers = stats_filter.includes(vt_optimizer::output::StatsSection::Layers);
             let include_recommendations =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Recommendations);
@@ -411,19 +413,30 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 println!("{}", emphasize_section_heading("## Summary"));
                 println!(
                     "{}",
-                    format_summary_parts(vec![
-                        ("tiles", report.overall.tile_count.to_string()),
-                        ("total", format_bytes(report.overall.total_bytes)),
-                        ("max", format_bytes(report.overall.max_bytes)),
-                        ("avg", format_bytes(report.overall.avg_bytes)),
-                    ])
+                    format_summary_label("Number of tiles", report.overall.tile_count)
                 );
                 println!(
                     "{}",
-                    format_summary_parts(vec![
-                        ("empty_tiles", report.empty_tiles.to_string()),
-                        ("empty_ratio", format!("{:.4}", report.empty_ratio)),
-                    ])
+                    format_summary_label("Total size", format_bytes(report.overall.total_bytes))
+                );
+                println!(
+                    "{}",
+                    format_summary_label("Max tile size", format_bytes(report.overall.max_bytes))
+                );
+                println!(
+                    "{}",
+                    format_summary_label(
+                        "Average tile size",
+                        format_bytes(report.overall.avg_bytes)
+                    )
+                );
+                println!(
+                    "{}",
+                    format_summary_label("Empty tiles", report.empty_tiles)
+                );
+                println!(
+                    "{}",
+                    format_summary_label("Empty tile ratio", format!("{:.4}", report.empty_ratio))
                 );
                 if report.sampled {
                     println!(
@@ -463,14 +476,17 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             if include_zoom && !report.by_zoom.is_empty() {
                 println!();
                 println!("{}", emphasize_section_heading("## Zoom"));
-                for zoom in report.by_zoom.iter() {
+                for line in format_zoom_table(
+                    &report.by_zoom,
+                    report.overall.tile_count,
+                    report.overall.total_bytes,
+                ) {
+                    println!("{}", emphasize_table_header(&line));
+                }
+                if args.zoom.is_none() {
+                    println!();
                     println!(
-                        "- z={}: tiles={} total={} max={} avg={}",
-                        zoom.zoom,
-                        zoom.stats.tile_count,
-                        format_bytes(zoom.stats.total_bytes),
-                        format_bytes(zoom.stats.max_bytes),
-                        format_bytes(zoom.stats.avg_bytes)
+                        "Tip: use --zoom option to inspect histogram and layers by each zoom level."
                     );
                 }
             }
@@ -746,23 +762,9 @@ fn format_summary_label<T: std::fmt::Display>(label: &str, value: T) -> String {
     format!("- {}: {}", Style::new().fg(Color::Blue).paint(label), value)
 }
 
-fn format_summary_parts(parts: Vec<(&str, String)>) -> String {
-    let mut line = String::from("- ");
-    for (idx, (label, value)) in parts.into_iter().enumerate() {
-        if idx > 0 {
-            line.push(' ');
-        }
-        line.push_str(&format!(
-            "{}: {}",
-            Style::new().fg(Color::Blue).paint(label),
-            value
-        ));
-    }
-    line
-}
-
 fn emphasize_table_header(line: &str) -> String {
     if line.trim_start().starts_with("range")
+        || line.trim_start().starts_with("zoom")
         || line.trim_start().starts_with("name")
         || line.trim_start().starts_with("# of")
     {

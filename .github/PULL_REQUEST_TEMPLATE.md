@@ -4,7 +4,7 @@
 ## Testing
 - [ ] `make fmt`
 - [ ] `make clippy`
-- [ ] `cargo test`
+- [ ] `make test`
 
 ## Checklist
 - [ ] I updated documentation where needed

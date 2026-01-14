@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 
 use nu_ansi_term::Color;
-use vt_optimizer::mbtiles::{HistogramBucket, TileSummary, ZoomHistogram};
+use vt_optimizer::mbtiles::{
+    HistogramBucket, MbtilesStats, MbtilesZoomStats, TileSummary, ZoomHistogram,
+};
 use vt_optimizer::output::{
     LayerTotals, format_histogram_table, format_histograms_by_zoom_section,
-    format_metadata_section, format_tile_summary_text, summarize_file_layers,
+    format_metadata_section, format_tile_summary_text, format_zoom_table, summarize_file_layers,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -36,6 +38,18 @@ fn bucket(
     }
 }
 
+fn zoom_stats(zoom: u8, tile_count: u64, total: u64, max: u64, avg: u64) -> MbtilesZoomStats {
+    MbtilesZoomStats {
+        zoom,
+        stats: MbtilesStats {
+            tile_count,
+            total_bytes: total,
+            max_bytes: max,
+            avg_bytes: avg,
+        },
+    }
+}
+
 #[test]
 fn format_histogram_table_includes_warning_markers() {
     let buckets = vec![
@@ -47,6 +61,28 @@ fn format_histogram_table_includes_warning_markers() {
     assert!(header.contains("acc%size"));
     assert!(lines.iter().any(|line| line.contains("!! (over)")));
     assert!(lines.iter().any(|line| line.contains("! (near)")));
+}
+
+#[test]
+fn format_zoom_table_sorts_and_labels() {
+    let stats = vec![
+        zoom_stats(5, 10, 50_000, 10_000, 5_000),
+        zoom_stats(2, 3, 3_000, 1_200, 1_000),
+    ];
+    let lines = format_zoom_table(&stats, 20, 100_000);
+    let header = lines.first().expect("missing header");
+    assert!(header.contains("zoom"));
+    assert!(header.contains("%tiles"));
+    assert!(header.contains("%size"));
+    let z2_index = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with('2'))
+        .expect("missing z=2 row");
+    let z5_index = lines
+        .iter()
+        .position(|line| line.trim_start().starts_with('5'))
+        .expect("missing z=5 row");
+    assert!(z2_index < z5_index);
 }
 
 #[test]
