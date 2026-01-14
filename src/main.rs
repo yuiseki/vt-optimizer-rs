@@ -693,7 +693,7 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
 }
 
 fn emphasize_section_heading(line: &str) -> String {
-    if line.starts_with("## ") || line.starts_with("### ") {
+    if line.starts_with("# ") || line.starts_with("## ") || line.starts_with("### ") {
         Color::Green.bold().paint(line).to_string()
     } else {
         line.to_string()
