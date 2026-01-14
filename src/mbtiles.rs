@@ -1155,7 +1155,8 @@ fn build_histogram(
     let mut index: u64 = 0;
     while let Some(row) = rows.next().context("read histogram row")? {
         let row_zoom: u8 = row.get(0)?;
-        let length: u64 = row.get(1)?;
+        let length: i64 = row.get(1)?;
+        let length = u64::try_from(length).context("tile length must be non-negative")?;
         if let Some(target) = zoom
             && row_zoom != target
         {
@@ -1306,7 +1307,8 @@ fn build_zoom_histograms(
     let mut total_index: u64 = 0;
     while let Some(row) = rows.next().context("read zoom histogram row")? {
         let zoom: u8 = row.get(0)?;
-        let length: u64 = row.get(1)?;
+        let length: i64 = row.get(1)?;
+        let length = u64::try_from(length).context("tile length must be non-negative")?;
         total_index += 1;
         let Some(accum) = accums.get_mut(&zoom) else {
             continue;
@@ -1471,7 +1473,8 @@ fn fetch_zoom_counts(conn: &Connection) -> Result<BTreeMap<u8, u64>> {
     let mut counts = BTreeMap::new();
     while let Some(row) = rows.next().context("read zoom count row")? {
         let zoom: u8 = row.get(0)?;
-        let count: u64 = row.get(1)?;
+        let count: i64 = row.get(1)?;
+        let count = u64::try_from(count).context("tile count must be non-negative")?;
         counts.insert(zoom, count);
     }
     Ok(counts)
@@ -1526,12 +1529,13 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         let query = select_tile_count_query(&conn, options.zoom.is_some())?;
         let count = match options.zoom {
             Some(z) => conn
-                .query_row(&query, [z], |row| row.get(0))
+                .query_row(&query, [z], |row| row.get::<_, i64>(0))
                 .context("failed to read tile count (zoom)")?,
             None => conn
-                .query_row(&query, [], |row| row.get(0))
+                .query_row(&query, [], |row| row.get::<_, i64>(0))
                 .context("failed to read tile count")?,
         };
+        let count = u64::try_from(count).context("tile count must be non-negative")?;
         if let Some(spinner) = spinner {
             spinner.finish_and_clear();
         }
@@ -1609,7 +1613,8 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         let zoom: u8 = row.get(0)?;
         let x: u32 = row.get(1)?;
         let y: u32 = row.get(2)?;
-        let length: u64 = row.get(3)?;
+        let length: i64 = row.get(3)?;
+        let length = u64::try_from(length).context("tile length must be non-negative")?;
         let tile_data: Option<Vec<u8>> = if need_tile_data {
             Some(row.get(4)?)
         } else {
