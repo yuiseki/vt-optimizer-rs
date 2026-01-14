@@ -11,6 +11,7 @@ keywords = ["vt-optimizer", "vector-tiles", "mbtiles", "pmtiles", "geospatial", 
 categories = ["command-line-utilities"]
 exclude = [
 	".cargo_vcs_info.json",
+	".tool-versions",
 	"Cargo.toml.orig",
 	"Cargo.lock",
 	".vscode/*",
