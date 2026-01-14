@@ -20,6 +20,12 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.3.1] - 2026-01-14
+### Changed
+- Improve inspect text output readability (colored labels, title styling, path underline).
+- Show layer/feature/key/value totals in summary output.
+- Add a visible gap between progress output and report text.
+
 ## [0.3.0] - 2026-01-13
 
 ### Added

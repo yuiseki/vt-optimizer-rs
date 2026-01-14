@@ -5,7 +5,9 @@ use serde_json::json;
 use crate::cli::{ReportFormat, TileInfoFormat};
 use std::collections::BTreeMap;
 
-use crate::mbtiles::{HistogramBucket, MbtilesReport, ZoomHistogram};
+use crate::mbtiles::{
+    FileLayerSummary, HistogramBucket, MbtilesReport, TileSummary, ZoomHistogram,
+};
 
 use std::collections::BTreeSet;
 
@@ -386,6 +388,50 @@ pub fn format_histogram_table(buckets: &[HistogramBucket]) -> Vec<String> {
         ));
     }
     lines
+}
+
+pub fn format_tile_summary_text(summary: &TileSummary) -> Vec<String> {
+    vec![
+        format!("- z={} x={} y={}", summary.zoom, summary.x, summary.y),
+        format!("- Layers in this tile: {}", summary.layer_count),
+        format!("- Features in this tile: {}", summary.total_features),
+        format!("- Vertices in this tile: {}", summary.vertex_count),
+        format!("- Keys in this tile: {}", summary.property_key_count),
+        format!("- Values in this tile: {}", summary.property_value_count),
+    ]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerTotals {
+    pub layer_count: usize,
+    pub feature_count: u64,
+    pub vertex_count: u64,
+    pub property_key_count: usize,
+    pub property_value_count: usize,
+}
+
+pub fn summarize_file_layers(file_layers: &[FileLayerSummary]) -> Option<LayerTotals> {
+    if file_layers.is_empty() {
+        return None;
+    }
+    let mut totals = LayerTotals {
+        layer_count: file_layers.len(),
+        feature_count: 0,
+        vertex_count: 0,
+        property_key_count: 0,
+        property_value_count: 0,
+    };
+    for layer in file_layers {
+        totals.feature_count = totals.feature_count.saturating_add(layer.feature_count);
+        totals.vertex_count = totals.vertex_count.saturating_add(layer.vertex_count);
+        totals.property_key_count = totals
+            .property_key_count
+            .saturating_add(layer.property_key_count);
+        totals.property_value_count = totals
+            .property_value_count
+            .saturating_add(layer.property_value_count);
+    }
+    Some(totals)
 }
 
 pub fn format_histograms_by_zoom_section(histograms: &[ZoomHistogram]) -> Vec<String> {

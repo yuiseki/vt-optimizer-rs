@@ -1743,6 +1743,9 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
 
     progress.set_position(processed);
     progress.finish();
+    if !options.no_progress {
+        eprintln!();
+    }
 
     // Build layer list from collected samples or full scan
     let mut file_layers = if collect_layers && !layer_accums.is_empty() {

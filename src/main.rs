@@ -3,7 +3,7 @@ use std::thread;
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use nu_ansi_term::Color;
+use nu_ansi_term::{Color, Style};
 use vt_optimizer::cli::{Cli, Command, ReportFormat, TileSortArg};
 use vt_optimizer::format::{plan_copy, plan_optimize, resolve_output_path};
 use vt_optimizer::mbtiles::{
@@ -351,6 +351,11 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     };
     let stats_filter = vt_optimizer::output::parse_stats_filter(args.stats.as_deref())?;
     let report = vt_optimizer::output::apply_tile_info_format(report, args.tile_info_format);
+    let summary_totals = if stats_filter.includes(vt_optimizer::output::StatsSection::Summary) {
+        vt_optimizer::output::summarize_file_layers(&report.file_layers)
+    } else {
+        None
+    };
     let report = vt_optimizer::output::apply_stats_filter(report, &stats_filter);
     match output {
         ReportFormat::Json => {
@@ -369,6 +374,8 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             }
         }
         ReportFormat::Text => {
+            println!();
+            eprintln!();
             let include_metadata =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Metadata);
             let include_summary =
@@ -390,10 +397,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 stats_filter.includes(vt_optimizer::output::StatsSection::TopTileSummaries);
             let include_tile_summary =
                 stats_filter.includes(vt_optimizer::output::StatsSection::TileSummary);
-            println!(
-                "# Vector tile inspection of [{}] by vt-optimizer",
-                args.input.display()
-            );
+            println!("{}", format_inspect_title(&args.input));
             println!();
             if include_metadata && !report.metadata.is_empty() {
                 for line in format_metadata_section(&report.metadata) {
@@ -404,20 +408,53 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             if include_summary {
                 println!("{}", emphasize_section_heading("## Summary"));
                 println!(
-                    "- tiles: {} total: {} max: {} avg: {}",
-                    report.overall.tile_count,
-                    format_bytes(report.overall.total_bytes),
-                    format_bytes(report.overall.max_bytes),
-                    format_bytes(report.overall.avg_bytes)
+                    "{}",
+                    format_summary_parts(vec![
+                        ("tiles", report.overall.tile_count.to_string()),
+                        ("total", format_bytes(report.overall.total_bytes)),
+                        ("max", format_bytes(report.overall.max_bytes)),
+                        ("avg", format_bytes(report.overall.avg_bytes)),
+                    ])
                 );
                 println!(
-                    "- empty_tiles: {} empty_ratio: {:.4}",
-                    report.empty_tiles, report.empty_ratio
+                    "{}",
+                    format_summary_parts(vec![
+                        ("empty_tiles", report.empty_tiles.to_string()),
+                        ("empty_ratio", format!("{:.4}", report.empty_ratio)),
+                    ])
                 );
                 if report.sampled {
                     println!(
-                        "- sample: used={} total={}",
-                        report.sample_used_tiles, report.sample_total_tiles
+                        "{}",
+                        format_summary_label(
+                            "sample",
+                            format!(
+                                "used={} total={}",
+                                report.sample_used_tiles, report.sample_total_tiles
+                            )
+                        )
+                    );
+                }
+                if let Some(totals) = summary_totals {
+                    println!(
+                        "{}",
+                        format_summary_label("Layers in this tile", totals.layer_count)
+                    );
+                    println!(
+                        "{}",
+                        format_summary_label("Features in this tile", totals.feature_count)
+                    );
+                    println!(
+                        "{}",
+                        format_summary_label("Vertices in this tile", totals.vertex_count)
+                    );
+                    println!(
+                        "{}",
+                        format_summary_label("Keys in this tile", totals.property_key_count)
+                    );
+                    println!(
+                        "{}",
+                        format_summary_label("Values in this tile", totals.property_value_count)
                     );
                 }
             }
@@ -586,17 +623,9 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 if let Some(summary) = report.tile_summary.as_ref() {
                     println!();
                     println!("{}", emphasize_section_heading("## Tile Summary"));
-                    println!(
-                        "- z={} x={} y={} layers={} total_features={} vertices={} keys={} values={}",
-                        summary.zoom,
-                        summary.x,
-                        summary.y,
-                        summary.layer_count,
-                        summary.total_features,
-                        summary.vertex_count,
-                        summary.property_key_count,
-                        summary.property_value_count
-                    );
+                    for line in vt_optimizer::output::format_tile_summary_text(summary) {
+                        println!("{}", line);
+                    }
                     for layer in summary.layers.iter() {
                         println!(
                             "  layer: {} features={} vertices={} property_keys={} values={}",
@@ -688,11 +717,44 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
 }
 
 fn emphasize_section_heading(line: &str) -> String {
-    if line.starts_with("## ") || line.starts_with("### ") {
+    if line.starts_with("# ") || line.starts_with("## ") || line.starts_with("### ") {
         Color::Green.bold().paint(line).to_string()
     } else {
         line.to_string()
     }
+}
+
+fn format_inspect_title(path: &std::path::Path) -> String {
+    let prefix = "# Vector tile inspection of [";
+    let suffix = "] by vt-optimizer";
+    let path_text = path.display().to_string();
+    let base = Style::new().fg(Color::Green).bold();
+    let underline = base.underline();
+    format!(
+        "{}{}{}",
+        base.paint(prefix),
+        underline.paint(path_text),
+        base.paint(suffix)
+    )
+}
+
+fn format_summary_label<T: std::fmt::Display>(label: &str, value: T) -> String {
+    format!("- {}: {}", Style::new().fg(Color::Blue).paint(label), value)
+}
+
+fn format_summary_parts(parts: Vec<(&str, String)>) -> String {
+    let mut line = String::from("- ");
+    for (idx, (label, value)) in parts.into_iter().enumerate() {
+        if idx > 0 {
+            line.push(' ');
+        }
+        line.push_str(&format!(
+            "{}: {}",
+            Style::new().fg(Color::Blue).paint(label),
+            value
+        ));
+    }
+    line
 }
 
 fn emphasize_table_header(line: &str) -> String {
