@@ -13,5 +13,6 @@
 - When editing PR bodies, do not paste raw `cargo test --verbose` output. If you ran `make test` and it passed, just check the Testing checkbox.
 - Do not use `gh pr edit` to update PR bodies. Use `gh api -X PATCH` instead.
 - Avoid `gh pr create`. Create PRs with `gh api -X POST /repos/<owner>/<repo>/pulls` and pass `title`, `head`, `base`, and `body`.
+- Always update `CHANGELOG.md` for user-visible changes before releasing.
 - When asked to bump versions, follow `docs/RELEASE.md`.
 - Release flow: `main` → `release` PRs are auto-created/updated; tags are created by workflow on `release` merges and releases are dispatched automatically.
