@@ -415,8 +415,9 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             let include_bucket = stats_filter.includes(vt_optimizer::output::StatsSection::Bucket);
             let include_bucket_tiles =
                 stats_filter.includes(vt_optimizer::output::StatsSection::BucketTiles);
-            let include_top_tiles =
-                stats_filter.includes(vt_optimizer::output::StatsSection::TopTiles);
+            let include_top_tiles = stats_filter
+                .includes(vt_optimizer::output::StatsSection::TopTiles)
+                && !hide_tile_summary_sections;
             let include_top_tile_summaries =
                 stats_filter.includes(vt_optimizer::output::StatsSection::TopTileSummaries);
             let include_tile_summary =
