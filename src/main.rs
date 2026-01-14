@@ -395,10 +395,11 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 stats_filter.includes(vt_optimizer::output::StatsSection::TopTileSummaries);
             let include_tile_summary =
                 stats_filter.includes(vt_optimizer::output::StatsSection::TileSummary);
-            println!(
+            let title = format!(
                 "# Vector tile inspection of [{}] by vt-optimizer",
                 args.input.display()
             );
+            println!("{}", emphasize_section_heading(&title));
             println!();
             if include_metadata && !report.metadata.is_empty() {
                 for line in format_metadata_section(&report.metadata) {
