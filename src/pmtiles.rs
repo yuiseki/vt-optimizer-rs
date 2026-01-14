@@ -651,10 +651,8 @@ fn accumulate_tile_counts(
         for idx in 0..run {
             let tile_id = entry.tile_id + idx as u64;
             let (z, _x, _y) = tile_id_to_xyz(tile_id);
-            if let Some(target_zoom) = zoom_filter {
-                if z != target_zoom {
-                    continue;
-                }
+            if let Some(target_zoom) = zoom_filter && z != target_zoom {
+                continue;
             }
             overall.add_tile(length);
             by_zoom
@@ -719,12 +717,10 @@ fn build_histogram_from_entries(
             let length = entry.length as u64;
             let run = entry.run_length.max(1);
             for idx in 0..run {
-                if let Some(target_zoom) = zoom_filter {
-                    let tile_id = entry.tile_id + idx as u64;
-                    let (z, _x, _y) = tile_id_to_xyz(tile_id);
-                    if z != target_zoom {
-                        continue;
-                    }
+                let tile_id = entry.tile_id + idx as u64;
+                let (z, _x, _y) = tile_id_to_xyz(tile_id);
+                if let Some(target_zoom) = zoom_filter && z != target_zoom {
+                    continue;
                 }
                 let mut bucket = ((length.saturating_sub(min_len)) / bucket_size) as usize;
                 if bucket >= buckets {
@@ -820,10 +816,8 @@ fn build_zoom_histograms_from_entries(
 
     let mut accums: BTreeMap<u8, ZoomAccum> = BTreeMap::new();
     for (zoom, (min_len, max_len)) in zoom_minmax.iter() {
-        if let Some(target_zoom) = zoom_filter {
-            if *zoom != target_zoom {
-                continue;
-            }
+        if let Some(target_zoom) = zoom_filter && *zoom != target_zoom {
+            continue;
         }
         let range = (max_len - min_len).max(1);
         let bucket_size = ((range as f64) / buckets as f64).ceil() as u64;
@@ -859,10 +853,8 @@ fn build_zoom_histograms_from_entries(
             for idx in 0..run {
                 let tile_id = entry.tile_id + idx as u64;
                 let (z, _x, _y) = tile_id_to_xyz(tile_id);
-                if let Some(target_zoom) = zoom_filter {
-                    if z != target_zoom {
-                        continue;
-                    }
+                if let Some(target_zoom) = zoom_filter && z != target_zoom {
+                    continue;
                 }
                 let Some(accum) = accums.get_mut(&z) else {
                     continue;
@@ -977,10 +969,8 @@ fn build_file_layer_list_pmtiles(
             for idx in 0..run {
                 let tile_id = entry.tile_id + idx as u64;
                 let (z, _x, _y) = tile_id_to_xyz(tile_id);
-                if let Some(target_zoom) = options.zoom {
-                    if z != target_zoom {
-                        continue;
-                    }
+                if let Some(target_zoom) = options.zoom && z != target_zoom {
+                    continue;
                 }
                 index += 1;
                 if include_sample(index, total_tiles, options.sample.as_ref()) {

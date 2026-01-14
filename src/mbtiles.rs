@@ -867,10 +867,8 @@ fn build_file_layer_list(
 
     while let Some(row) = rows.next().context("read layer list row")? {
         let row_zoom: u8 = row.get(0)?;
-        if let Some(target) = zoom {
-            if row_zoom != target {
-                continue;
-            }
+        if let Some(target) = zoom && row_zoom != target {
+            continue;
         }
         index += 1;
         if !include_sample(index, total_tiles, sample) {
@@ -905,10 +903,8 @@ fn build_file_layer_list(
             }
         }
 
-        if let Some(SampleSpec::Count(limit)) = sample {
-            if index >= *limit {
-                break;
-            }
+        if let Some(SampleSpec::Count(limit)) = sample && index >= *limit {
+            break;
         }
     }
 
@@ -954,10 +950,8 @@ fn build_tile_summary(
         Some(layers_filter.iter().cloned().collect::<HashSet<_>>())
     };
     for layer in layers {
-        if let Some(filter) = filter_set.as_ref() {
-            if !filter.contains(&layer.name) {
-                continue;
-            }
+        if let Some(filter) = filter_set.as_ref() && !filter.contains(&layer.name) {
+            continue;
         }
         let features = reader
             .get_features(layer.layer_index)
@@ -1156,10 +1150,8 @@ fn build_histogram(
     while let Some(row) = rows.next().context("read histogram row")? {
         let row_zoom: u8 = row.get(0)?;
         let length: u64 = row.get(1)?;
-        if let Some(target) = zoom {
-            if row_zoom != target {
-                continue;
-            }
+        if let Some(target) = zoom && row_zoom != target {
+            continue;
         }
         index += 1;
         if !include_sample(index, total_tiles_db, sample) {
@@ -1172,10 +1164,8 @@ fn build_histogram(
         counts[bucket] += 1;
         bytes[bucket] += length;
 
-        if let Some(SampleSpec::Count(limit)) = sample {
-            if counts.iter().sum::<u64>() >= *limit {
-                break;
-            }
+        if let Some(SampleSpec::Count(limit)) = sample && counts.iter().sum::<u64>() >= *limit {
+            break;
         }
 
         if index == 1 || index.is_multiple_of(1000) {
@@ -1325,10 +1315,8 @@ fn build_zoom_histograms(
         accum.used_tiles += 1;
         accum.used_bytes += length;
 
-        if let Some(SampleSpec::Count(limit)) = sample {
-            if accum.used_tiles >= *limit {
-                // keep scanning other zooms; no-op for this zoom
-            }
+        if let Some(SampleSpec::Count(limit)) = sample && accum.used_tiles >= *limit {
+            // keep scanning other zooms; no-op for this zoom
         }
 
         if total_index == 1 || total_index.is_multiple_of(1000) {
@@ -1616,10 +1604,8 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
             None
         };
 
-        if let Some(target) = options.zoom {
-            if zoom != target {
-                continue;
-            }
+        if let Some(target) = options.zoom && zoom != target {
+            continue;
         }
 
         processed += 1;
@@ -1661,34 +1647,28 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
             }
 
             // Collect layer information (when sampling)
-            if collect_layers && tile_data.is_some() {
-                if let Ok(payload) = decode_tile_payload(tile_data.as_ref().unwrap()) {
-                    if let Ok(reader) = Reader::new(payload) {
-                        if let Ok(layers) = reader.get_layer_metadata() {
-                            for layer in layers {
-                                let entry =
-                                    layer_accums.entry(layer.name.clone()).or_insert_with(|| {
-                                        LayerAccum {
-                                            feature_count: 0,
-                                            vertex_count: 0,
-                                            property_keys: HashSet::new(),
-                                            property_values: HashSet::new(),
-                                        }
-                                    });
-                                entry.feature_count += layer.feature_count as u64;
-                                if let Ok(features) = reader.get_features(layer.layer_index) {
-                                    for feature in features {
-                                        entry.vertex_count +=
-                                            count_vertices(&feature.geometry) as u64;
-                                        if let Some(props) = feature.properties {
-                                            for (key, value) in props {
-                                                entry.property_keys.insert(key.clone());
-                                                entry
-                                                    .property_values
-                                                    .insert(format_property_value(&value));
-                                            }
-                                        }
-                                    }
+            if collect_layers && tile_data.is_some()
+                && let Ok(payload) = decode_tile_payload(tile_data.as_ref().unwrap())
+                && let Ok(reader) = Reader::new(payload)
+                && let Ok(layers) = reader.get_layer_metadata()
+            {
+                for layer in layers {
+                    let entry = layer_accums.entry(layer.name.clone()).or_insert_with(|| {
+                        LayerAccum {
+                            feature_count: 0,
+                            vertex_count: 0,
+                            property_keys: HashSet::new(),
+                            property_values: HashSet::new(),
+                        }
+                    });
+                    entry.feature_count += layer.feature_count as u64;
+                    if let Ok(features) = reader.get_features(layer.layer_index) {
+                        for feature in features {
+                            entry.vertex_count += count_vertices(&feature.geometry) as u64;
+                            if let Some(props) = feature.properties {
+                                for (key, value) in props {
+                                    entry.property_keys.insert(key.clone());
+                                    entry.property_values.insert(format_property_value(&value));
                                 }
                             }
                         }
@@ -1703,37 +1683,29 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
                 }
             }
 
-            if let (Some(bucket_index), Some(list_options)) =
-                (options.bucket, options.list_tiles.as_ref())
+            if let (Some(bucket_index), Some(list_options)) = (options.bucket, options.list_tiles.as_ref())
+                && let Some(bucket_idx) = histogram_bucket_index(length, min_len, max_len, options.histogram_buckets)
+                && bucket_idx == bucket_index
             {
-                if let Some(bucket_idx) =
-                    histogram_bucket_index(length, min_len, max_len, options.histogram_buckets)
-                {
-                    if bucket_idx == bucket_index {
-                        bucket_tiles.push(TopTile {
-                            zoom,
-                            x,
-                            y,
-                            bytes: length,
-                        });
-                        if bucket_tiles.len() > list_options.limit {
-                            if list_options.sort == TileSort::Size {
-                                bucket_tiles.sort_by(|a, b| b.bytes.cmp(&a.bytes));
-                            } else {
-                                bucket_tiles
-                                    .sort_by(|a, b| (a.zoom, a.x, a.y).cmp(&(b.zoom, b.x, b.y)));
-                            }
-                            bucket_tiles.truncate(list_options.limit);
-                        }
+                bucket_tiles.push(TopTile {
+                    zoom,
+                    x,
+                    y,
+                    bytes: length,
+                });
+                if bucket_tiles.len() > list_options.limit {
+                    if list_options.sort == TileSort::Size {
+                        bucket_tiles.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+                    } else {
+                        bucket_tiles.sort_by(|a, b| (a.zoom, a.x, a.y).cmp(&(b.zoom, b.x, b.y)));
                     }
+                    bucket_tiles.truncate(list_options.limit);
                 }
             }
         }
 
-        if let Some(SampleSpec::Count(limit)) = options.sample {
-            if used >= limit {
-                break;
-            }
+        if let Some(SampleSpec::Count(limit)) = options.sample && used >= limit {
+            break;
         }
 
         if processed == 1 || processed.is_multiple_of(100) {
