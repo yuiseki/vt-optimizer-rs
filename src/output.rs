@@ -6,7 +6,8 @@ use crate::cli::{ReportFormat, TileInfoFormat};
 use std::collections::BTreeMap;
 
 use crate::mbtiles::{
-    FileLayerSummary, HistogramBucket, MbtilesReport, MbtilesZoomStats, TileSummary, ZoomHistogram,
+    FileLayerSummary, HistogramBucket, MbtilesReport, MbtilesZoomStats, TileSummary, TopTile,
+    ZoomHistogram,
 };
 
 use std::collections::BTreeSet;
@@ -476,6 +477,21 @@ pub fn format_zoom_table(
         ));
     }
     lines
+}
+
+pub fn format_top_tiles_lines(tiles: &[TopTile]) -> Vec<String> {
+    tiles
+        .iter()
+        .map(|tile| {
+            format!(
+                "- z={} x={} y={} size={}",
+                tile.zoom,
+                tile.x,
+                tile.y,
+                format_bytes(tile.bytes)
+            )
+        })
+        .collect()
 }
 
 pub fn format_tile_summary_text(summary: &TileSummary) -> Vec<String> {

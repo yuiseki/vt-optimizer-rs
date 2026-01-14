@@ -13,8 +13,8 @@ use vt_optimizer::mbtiles::{
 };
 use vt_optimizer::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,
-    format_metadata_section, format_zoom_table, ndjson_lines, pad_left, pad_right,
-    resolve_output_format,
+    format_metadata_section, format_top_tiles_lines, format_zoom_table, ndjson_lines, pad_left,
+    pad_right, resolve_output_format,
 };
 use vt_optimizer::pmtiles::{
     inspect_pmtiles_with_options, mbtiles_to_pmtiles, pmtiles_to_mbtiles, prune_pmtiles_layer_only,
@@ -307,7 +307,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     } else {
         args.topn
     };
-    let (sample, topn, histogram_buckets) = if args.fast {
+    let (sample, mut topn, histogram_buckets) = if args.fast {
         (
             Some(vt_optimizer::mbtiles::SampleSpec::Ratio(0.1)),
             Some(5),
@@ -316,9 +316,13 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     } else {
         (sample, topn, args.histogram_buckets as usize)
     };
+    if output == ReportFormat::Text && topn.unwrap_or(0) == 0 {
+        topn = Some(10);
+    }
+    let topn_value = topn.unwrap_or(0) as usize;
     let options = InspectOptions {
         sample,
-        topn: topn.unwrap_or(0) as usize,
+        topn: topn_value,
         histogram_buckets,
         no_progress: args.no_progress,
         max_tile_bytes: args.max_tile_bytes,
@@ -600,12 +604,12 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             }
             if include_top_tiles && !report.top_tiles.is_empty() {
                 println!();
-                println!("{}", emphasize_section_heading("## Top Tiles"));
-                for tile in report.top_tiles.iter() {
-                    println!(
-                        "- z={}: x={} y={} bytes={}",
-                        tile.zoom, tile.x, tile.y, tile.bytes
-                    );
+                println!(
+                    "{}",
+                    emphasize_section_heading(&format!("## Top {} big tiles", topn_value))
+                );
+                for line in format_top_tiles_lines(&report.top_tiles) {
+                    println!("{}", line);
                 }
             }
             if include_top_tile_summaries && !report.top_tile_summaries.is_empty() {

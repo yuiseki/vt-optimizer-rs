@@ -9,7 +9,7 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
-- TBD_UNVT_CHANGELOG_ADDED
+- Add a "Top 10 big tiles" section to inspect text output (respects --zoom).
 
 ### Changed
 - TBD_UNVT_CHANGELOG_CHANGED

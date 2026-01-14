@@ -556,6 +556,10 @@ v0.0.4 では以下を **含めない**。
 * `inspect` の text 出力で Zoom セクションをテーブル表示に変更（%tiles/%size/acc% 追加）
 * `inspect` の text 出力から Histogram by Zoom セクションを除外し、Histogram に注意書きを追加
 
+## 1.66 マイルストーン（v0.4.3）
+
+* `inspect` の text 出力に Top 10 big tiles セクションを追加
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）

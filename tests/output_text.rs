@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 
 use nu_ansi_term::Color;
 use vt_optimizer::mbtiles::{
-    HistogramBucket, MbtilesStats, MbtilesZoomStats, TileSummary, ZoomHistogram,
+    HistogramBucket, MbtilesStats, MbtilesZoomStats, TileSummary, TopTile, ZoomHistogram,
 };
 use vt_optimizer::output::{
     LayerTotals, format_histogram_table, format_histograms_by_zoom_section,
-    format_metadata_section, format_tile_summary_text, format_zoom_table, summarize_file_layers,
+    format_metadata_section, format_tile_summary_text, format_top_tiles_lines, format_zoom_table,
+    summarize_file_layers,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -83,6 +84,22 @@ fn format_zoom_table_sorts_and_labels() {
         .position(|line| line.trim_start().starts_with('5'))
         .expect("missing z=5 row");
     assert!(z2_index < z5_index);
+}
+
+#[test]
+fn format_top_tiles_lines_includes_size() {
+    let tiles = vec![TopTile {
+        zoom: 1,
+        x: 2,
+        y: 3,
+        bytes: 2048,
+    }];
+    let lines = format_top_tiles_lines(&tiles);
+    assert_eq!(lines.len(), 1);
+    assert!(lines[0].contains("z=1"));
+    assert!(lines[0].contains("x=2"));
+    assert!(lines[0].contains("y=3"));
+    assert!(lines[0].contains("size=2.00KB"));
 }
 
 #[test]
