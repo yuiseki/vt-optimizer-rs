@@ -20,6 +20,10 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.4.0] - 2026-01-14
+### Changed
+- Change edition to 2024 in Cargo.toml
+
 ## [0.3.2] - 2026-01-14
 ### Changed
 - Limit compat z/x/y inspection output to tile summary only.
