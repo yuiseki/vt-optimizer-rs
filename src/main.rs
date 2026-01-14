@@ -409,6 +409,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             let include_histogram_by_zoom = args.stats.is_some()
                 && stats_filter.includes(vt_optimizer::output::StatsSection::HistogramByZoom);
             let include_layers = stats_filter.includes(vt_optimizer::output::StatsSection::Layers);
+            let hide_tile_summary_sections = args.x.is_some() && args.y.is_some();
             let include_recommendations =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Recommendations);
             let include_bucket = stats_filter.includes(vt_optimizer::output::StatsSection::Bucket);
@@ -422,13 +423,13 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 stats_filter.includes(vt_optimizer::output::StatsSection::TileSummary);
             println!("{}", format_inspect_title(&args.input));
             println!();
-            if include_metadata && !report.metadata.is_empty() {
+            if include_metadata && !hide_tile_summary_sections && !report.metadata.is_empty() {
                 for line in format_metadata_section(&report.metadata) {
                     println!("{}", emphasize_section_heading(&line));
                 }
                 println!();
             }
-            if include_summary {
+            if include_summary && !hide_tile_summary_sections {
                 println!("{}", emphasize_section_heading("## Summary"));
                 println!(
                     "{}",
@@ -509,21 +510,24 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                     );
                 }
             }
-            if include_histogram && !report.histogram.is_empty() {
+            if include_histogram && !hide_tile_summary_sections && !report.histogram.is_empty() {
                 println!();
                 println!("{}", emphasize_section_heading("## Histogram"));
                 for line in format_histogram_table(&report.histogram) {
                     println!("{}", emphasize_table_header(&line));
                 }
             }
-            if include_histogram_by_zoom && !report.histograms_by_zoom.is_empty() {
+            if include_histogram_by_zoom
+                && !hide_tile_summary_sections
+                && !report.histograms_by_zoom.is_empty()
+            {
                 println!();
                 for line in format_histograms_by_zoom_section(&report.histograms_by_zoom) {
                     let line = emphasize_section_heading(&line);
                     println!("{}", emphasize_table_header(&line));
                 }
             }
-            if include_layers && !report.file_layers.is_empty() {
+            if include_layers && !hide_tile_summary_sections && !report.file_layers.is_empty() {
                 println!();
                 println!("{}", emphasize_section_heading("## Layers"));
                 let name_width = report
