@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
-use vt_optimizer::mbtiles::{HistogramBucket, ZoomHistogram};
+use vt_optimizer::mbtiles::{HistogramBucket, TileSummary, ZoomHistogram};
 use vt_optimizer::output::{
     format_histogram_table, format_histograms_by_zoom_section, format_metadata_section,
+    format_tile_summary_text, summarize_file_layers, LayerTotals,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -127,4 +128,66 @@ fn format_metadata_section_lists_entries() {
     assert!(lines.iter().any(|line| line.contains("- format: pbf")));
     assert!(!lines.iter().any(|line| line.contains("- json:")));
     assert!(!lines.iter().any(|line| line.contains("- vector_layers:")));
+}
+
+#[test]
+fn format_tile_summary_text_includes_tile_counts() {
+    let summary = TileSummary {
+        zoom: 12,
+        x: 345,
+        y: 678,
+        layer_count: 3,
+        total_features: 42,
+        vertex_count: 9001,
+        property_key_count: 7,
+        property_value_count: 9,
+        layers: Vec::new(),
+    };
+
+    let lines = format_tile_summary_text(&summary);
+
+    assert_eq!(
+        lines,
+        vec![
+            "- z=12 x=345 y=678".to_string(),
+            "- Layers in this tile: 3".to_string(),
+            "- Features in this tile: 42".to_string(),
+            "- Vertices in this tile: 9001".to_string(),
+            "- Keys in this tile: 7".to_string(),
+            "- Values in this tile: 9".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn summarize_file_layers_accumulates_counts() {
+    let layers = vec![
+        vt_optimizer::mbtiles::FileLayerSummary {
+            name: "a".to_string(),
+            vertex_count: 10,
+            feature_count: 2,
+            property_key_count: 3,
+            property_value_count: 4,
+        },
+        vt_optimizer::mbtiles::FileLayerSummary {
+            name: "b".to_string(),
+            vertex_count: 20,
+            feature_count: 5,
+            property_key_count: 7,
+            property_value_count: 11,
+        },
+    ];
+
+    let totals = summarize_file_layers(&layers);
+
+    assert_eq!(
+        totals,
+        Some(LayerTotals {
+            layer_count: 2,
+            feature_count: 7,
+            vertex_count: 30,
+            property_key_count: 10,
+            property_value_count: 15,
+        })
+    );
 }
