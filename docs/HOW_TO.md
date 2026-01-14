@@ -25,6 +25,38 @@ Notes:
 - `--fast` uses sampling to reduce runtime and output volume.
 - For machine-readable output, add `--output ndjson`.
 
+### Inspect workflow and tips
+
+1) Start with full inspect output to identify the heaviest zoom level:
+
+```bash
+cargo run -- inspect "$MBTILES_PATH"
+```
+
+- The `## Zoom` section shows total size by zoom. Pick the zoom level with the
+  largest total size or max tile size for deeper inspection.
+
+2) Drill into a zoom level and list the largest tiles:
+
+```bash
+cargo run -- inspect "$MBTILES_PATH" --zoom 5
+```
+
+- The `## Top 10 big tiles` section prints copy-pasteable arguments like
+  `-z 5 -x 16 -y 20`, so you can inspect those tiles directly.
+
+3) Inspect a specific tile to see which layers and properties dominate:
+
+```bash
+cargo run -- inspect "$MBTILES_PATH" --zoom 5 -x 16 -y 20
+```
+
+Tips:
+- When `-x/-y` are provided, output focuses on `## Tile Summary` for that tile.
+- If you need a smaller report, use `--stats` to select sections or `--fast`
+  to sample.
+- Use `--output ndjson` when you want to script or diff results.
+
 ## Optimize
 
 If the output file already exists, remove it first:
