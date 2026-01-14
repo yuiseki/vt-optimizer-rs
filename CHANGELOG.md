@@ -20,6 +20,15 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.4.2] - 2026-01-14
+### Changed
+- Improve inspect text output readability (summary list items, zoom table with percentages).
+- Hide histogram-by-zoom section by default and add zoom-level tip to the Zoom section.
+
+## [0.4.1] - 2026-01-14
+### Changed
+- Bump rusqlite to 0.38 (bundled) and adjust SQLite row reads for u64 conversions.
+
 ## [0.4.0] - 2026-01-14
 ### Changed
 - Change edition to 2024 in Cargo.toml
