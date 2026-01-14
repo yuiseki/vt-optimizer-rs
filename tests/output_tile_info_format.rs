@@ -63,7 +63,9 @@ fn tile_info_format_compact_clears_property_keys() {
     let report = apply_tile_info_format(report, TileInfoFormat::Compact);
     let summary = report.tile_summary.expect("tile summary");
     assert!(summary.layers[0].property_keys.is_empty());
-    assert!(report.top_tile_summaries[0].layers[0]
-        .property_keys
-        .is_empty());
+    assert!(
+        report.top_tile_summaries[0].layers[0]
+            .property_keys
+            .is_empty()
+    );
 }

@@ -39,6 +39,7 @@
         "cargo test": true,
         "cargo build": true,
         "git checkout": true,
-        "git tag": true
+        "git tag": true,
+        "cargo package": true
     }
 }

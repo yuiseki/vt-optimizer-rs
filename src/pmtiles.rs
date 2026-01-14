@@ -5,19 +5,19 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use brotli::{CompressorWriter, Decompressor};
+use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
-use flate2::Compression;
-use hilbert_2d::{h2xy_discrete, xy2h_discrete, Variant};
+use hilbert_2d::{Variant, h2xy_discrete, xy2h_discrete};
 use mvt_reader::Reader;
 use rusqlite::Connection;
 use serde_json::Value;
 use varint_rs::{VarintReader, VarintWriter};
 
 use crate::mbtiles::{
-    count_vertices, encode_tile_payload, format_property_value, prune_tile_layers,
-    simplify_tile_payload, HistogramBucket, InspectOptions, MbtilesReport, MbtilesStats,
-    MbtilesZoomStats, PruneStats, SimplifyStats, TileCoord, ZoomHistogram,
+    HistogramBucket, InspectOptions, MbtilesReport, MbtilesStats, MbtilesZoomStats, PruneStats,
+    SimplifyStats, TileCoord, ZoomHistogram, count_vertices, encode_tile_payload,
+    format_property_value, prune_tile_layers, simplify_tile_payload,
 };
 
 const HEADER_SIZE: usize = 127;
@@ -651,10 +651,10 @@ fn accumulate_tile_counts(
         for idx in 0..run {
             let tile_id = entry.tile_id + idx as u64;
             let (z, _x, _y) = tile_id_to_xyz(tile_id);
-            if let Some(target_zoom) = zoom_filter {
-                if z != target_zoom {
-                    continue;
-                }
+            if let Some(target_zoom) = zoom_filter
+                && z != target_zoom
+            {
+                continue;
             }
             overall.add_tile(length);
             by_zoom
@@ -719,12 +719,12 @@ fn build_histogram_from_entries(
             let length = entry.length as u64;
             let run = entry.run_length.max(1);
             for idx in 0..run {
-                if let Some(target_zoom) = zoom_filter {
-                    let tile_id = entry.tile_id + idx as u64;
-                    let (z, _x, _y) = tile_id_to_xyz(tile_id);
-                    if z != target_zoom {
-                        continue;
-                    }
+                let tile_id = entry.tile_id + idx as u64;
+                let (z, _x, _y) = tile_id_to_xyz(tile_id);
+                if let Some(target_zoom) = zoom_filter
+                    && z != target_zoom
+                {
+                    continue;
                 }
                 let mut bucket = ((length.saturating_sub(min_len)) / bucket_size) as usize;
                 if bucket >= buckets {
@@ -820,10 +820,10 @@ fn build_zoom_histograms_from_entries(
 
     let mut accums: BTreeMap<u8, ZoomAccum> = BTreeMap::new();
     for (zoom, (min_len, max_len)) in zoom_minmax.iter() {
-        if let Some(target_zoom) = zoom_filter {
-            if *zoom != target_zoom {
-                continue;
-            }
+        if let Some(target_zoom) = zoom_filter
+            && *zoom != target_zoom
+        {
+            continue;
         }
         let range = (max_len - min_len).max(1);
         let bucket_size = ((range as f64) / buckets as f64).ceil() as u64;
@@ -859,10 +859,10 @@ fn build_zoom_histograms_from_entries(
             for idx in 0..run {
                 let tile_id = entry.tile_id + idx as u64;
                 let (z, _x, _y) = tile_id_to_xyz(tile_id);
-                if let Some(target_zoom) = zoom_filter {
-                    if z != target_zoom {
-                        continue;
-                    }
+                if let Some(target_zoom) = zoom_filter
+                    && z != target_zoom
+                {
+                    continue;
                 }
                 let Some(accum) = accums.get_mut(&z) else {
                     continue;
@@ -977,10 +977,10 @@ fn build_file_layer_list_pmtiles(
             for idx in 0..run {
                 let tile_id = entry.tile_id + idx as u64;
                 let (z, _x, _y) = tile_id_to_xyz(tile_id);
-                if let Some(target_zoom) = options.zoom {
-                    if z != target_zoom {
-                        continue;
-                    }
+                if let Some(target_zoom) = options.zoom
+                    && z != target_zoom
+                {
+                    continue;
                 }
                 index += 1;
                 if include_sample(index, total_tiles, options.sample.as_ref()) {

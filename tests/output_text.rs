@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use nu_ansi_term::Color;
 use vt_optimizer::mbtiles::{HistogramBucket, TileSummary, ZoomHistogram};
 use vt_optimizer::output::{
-    format_histogram_table, format_histograms_by_zoom_section, format_metadata_section,
-    format_tile_summary_text, summarize_file_layers, LayerTotals,
+    LayerTotals, format_histogram_table, format_histograms_by_zoom_section,
+    format_metadata_section, format_tile_summary_text, summarize_file_layers,
 };
 
 #[allow(clippy::too_many_arguments)]

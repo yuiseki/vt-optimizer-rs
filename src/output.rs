@@ -78,7 +78,7 @@ pub fn parse_stats_filter(value: Option<&str>) -> Result<StatsFilter> {
                 return Err(anyhow::anyhow!(
                     "unknown stats section: {} (possible values: metadata, summary, zoom, histogram, histogram_by_zoom, layers, recommendations, bucket, bucket_tiles, top_tiles, tile_summary, top_tile_summaries, all)",
                     token
-                ))
+                ));
             }
         };
         sections.insert(section);

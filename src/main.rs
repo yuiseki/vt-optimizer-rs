@@ -7,9 +7,9 @@ use nu_ansi_term::{Color, Style};
 use vt_optimizer::cli::{Cli, Command, ReportFormat, TileSortArg};
 use vt_optimizer::format::{plan_copy, plan_optimize, resolve_output_path};
 use vt_optimizer::mbtiles::{
-    copy_mbtiles, inspect_mbtiles_with_options, parse_sample_spec, parse_tile_spec,
-    prune_mbtiles_layer_only, simplify_mbtiles_tile, InspectOptions, PruneOptions, PruneStats,
-    TileListOptions, TileSort,
+    InspectOptions, PruneOptions, PruneStats, TileListOptions, TileSort, copy_mbtiles,
+    inspect_mbtiles_with_options, parse_sample_spec, parse_tile_spec, prune_mbtiles_layer_only,
+    simplify_mbtiles_tile,
 };
 use vt_optimizer::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,
@@ -567,12 +567,10 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                         .join(",")
                 );
             }
-            if include_bucket {
-                if let Some(count) = report.bucket_count {
-                    println!();
-                    println!("{}", emphasize_section_heading("## Bucket"));
-                    println!("- count: {}", count);
-                }
+            if include_bucket && let Some(count) = report.bucket_count {
+                println!();
+                println!("{}", emphasize_section_heading("## Bucket"));
+                println!("- count: {}", count);
             }
             if include_bucket_tiles && !report.bucket_tiles.is_empty() {
                 println!();
@@ -622,30 +620,28 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                     }
                 }
             }
-            if include_tile_summary {
-                if let Some(summary) = report.tile_summary.as_ref() {
-                    println!();
-                    println!("{}", emphasize_section_heading("## Tile Summary"));
-                    for line in vt_optimizer::output::format_tile_summary_text(summary) {
-                        println!("{}", line);
-                    }
-                    for layer in summary.layers.iter() {
+            if include_tile_summary && let Some(summary) = report.tile_summary.as_ref() {
+                println!();
+                println!("{}", emphasize_section_heading("## Tile Summary"));
+                for line in vt_optimizer::output::format_tile_summary_text(summary) {
+                    println!("{}", line);
+                }
+                for layer in summary.layers.iter() {
+                    println!(
+                        "  {}: {} features={} vertices={} property_keys={} values={}",
+                        Style::new().fg(Color::Blue).paint("layer"),
+                        layer.name,
+                        layer.feature_count,
+                        layer.vertex_count,
+                        layer.property_key_count,
+                        layer.property_value_count
+                    );
+                    if !layer.property_keys.is_empty() {
                         println!(
-                            "  {}: {} features={} vertices={} property_keys={} values={}",
-                            Style::new().fg(Color::Blue).paint("layer"),
-                            layer.name,
-                            layer.feature_count,
-                            layer.vertex_count,
-                            layer.property_key_count,
-                            layer.property_value_count
+                            "    {}: {}",
+                            Style::new().fg(Color::Blue).paint("keys"),
+                            layer.property_keys.join(",")
                         );
-                        if !layer.property_keys.is_empty() {
-                            println!(
-                                "    {}: {}",
-                                Style::new().fg(Color::Blue).paint("keys"),
-                                layer.property_keys.join(",")
-                            );
-                        }
                     }
                 }
             }

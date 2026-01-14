@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileFormat {
@@ -58,11 +58,7 @@ pub fn decide_formats(
         TileFormat::from_str(name)
             .ok_or_else(|| anyhow::anyhow!("unknown output format: {name}"))?
     } else if let Some(path) = output_path {
-        if let Some(fmt) = TileFormat::from_extension(path) {
-            fmt
-        } else {
-            input
-        }
+        TileFormat::from_extension(path).unwrap_or(input)
     } else {
         input
     };
@@ -90,10 +86,10 @@ pub fn validate_output_format_matches_path(
     let declared = TileFormat::from_str(fmt_name)
         .ok_or_else(|| anyhow::anyhow!("unknown output format: {fmt_name}"))?;
 
-    if let Some(path_fmt) = TileFormat::from_extension(path) {
-        if path_fmt != declared {
-            bail!("output format ({fmt_name}) conflicts with output file extension",);
-        }
+    if let Some(path_fmt) = TileFormat::from_extension(path)
+        && path_fmt != declared
+    {
+        bail!("output format ({fmt_name}) conflicts with output file extension",);
     }
 
     Ok(())

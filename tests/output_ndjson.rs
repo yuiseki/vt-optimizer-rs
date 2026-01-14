@@ -6,7 +6,7 @@ use vt_optimizer::mbtiles::{
     ZoomHistogram,
 };
 use vt_optimizer::output::{
-    apply_tile_info_format, ndjson_lines, resolve_output_format, NdjsonOptions,
+    NdjsonOptions, apply_tile_info_format, ndjson_lines, resolve_output_format,
 };
 
 #[test]

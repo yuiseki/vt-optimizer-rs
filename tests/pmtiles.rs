@@ -7,7 +7,7 @@ use brotli::CompressorWriter;
 use flate2::read::GzDecoder;
 use mvt::{GeomEncoder, GeomType, Tile};
 use mvt_reader::Reader;
-use vt_optimizer::mbtiles::{inspect_mbtiles, InspectOptions};
+use vt_optimizer::mbtiles::{InspectOptions, inspect_mbtiles};
 use vt_optimizer::pmtiles::{
     inspect_pmtiles_with_options, mbtiles_to_pmtiles, pmtiles_to_mbtiles, prune_pmtiles_layer_only,
 };
