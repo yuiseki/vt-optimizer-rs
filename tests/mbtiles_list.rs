@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use vt_optimizer::mbtiles::{
-    inspect_mbtiles_with_options, InspectOptions, TileListOptions, TileSort,
+    InspectOptions, TileListOptions, TileSort, inspect_mbtiles_with_options,
 };
 
 fn create_list_mbtiles(path: &Path) {

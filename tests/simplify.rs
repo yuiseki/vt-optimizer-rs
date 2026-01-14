@@ -2,7 +2,7 @@ use std::path::Path;
 
 use mvt::{GeomEncoder, GeomType, Tile};
 use mvt_reader::Reader;
-use vt_optimizer::mbtiles::{simplify_mbtiles_tile, InspectOptions, TileCoord};
+use vt_optimizer::mbtiles::{InspectOptions, TileCoord, simplify_mbtiles_tile};
 use vt_optimizer::pmtiles::{
     inspect_pmtiles_with_options, mbtiles_to_pmtiles, simplify_pmtiles_tile,
 };

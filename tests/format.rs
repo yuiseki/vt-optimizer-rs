@@ -2,8 +2,8 @@ use std::path::Path;
 
 use vt_optimizer::format::validate_output_format_matches_path;
 use vt_optimizer::format::{
-    decide_formats, default_output_path_pruned, plan_copy, plan_optimize, resolve_output_path,
-    TileFormat,
+    TileFormat, decide_formats, default_output_path_pruned, plan_copy, plan_optimize,
+    resolve_output_path,
 };
 
 #[test]

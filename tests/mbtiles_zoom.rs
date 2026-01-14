@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use vt_optimizer::mbtiles::{inspect_mbtiles_with_options, InspectOptions, MbtilesStats};
+use vt_optimizer::mbtiles::{InspectOptions, MbtilesStats, inspect_mbtiles_with_options};
 
 fn create_zoom_sample_mbtiles(path: &Path) {
     let conn = rusqlite::Connection::open(path).expect("open");

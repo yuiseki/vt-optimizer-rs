@@ -7,9 +7,9 @@ use nu_ansi_term::{Color, Style};
 use vt_optimizer::cli::{Cli, Command, ReportFormat, TileSortArg};
 use vt_optimizer::format::{plan_copy, plan_optimize, resolve_output_path};
 use vt_optimizer::mbtiles::{
-    copy_mbtiles, inspect_mbtiles_with_options, parse_sample_spec, parse_tile_spec,
-    prune_mbtiles_layer_only, simplify_mbtiles_tile, InspectOptions, PruneOptions, PruneStats,
-    TileListOptions, TileSort,
+    InspectOptions, PruneOptions, PruneStats, TileListOptions, TileSort, copy_mbtiles,
+    inspect_mbtiles_with_options, parse_sample_spec, parse_tile_spec, prune_mbtiles_layer_only,
+    simplify_mbtiles_tile,
 };
 use vt_optimizer::output::{
     format_bytes, format_histogram_table, format_histograms_by_zoom_section,

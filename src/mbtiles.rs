@@ -6,17 +6,17 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use crossbeam_channel::{bounded, Receiver, Sender};
+use crossbeam_channel::{Receiver, Sender, bounded};
+use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
-use flate2::Compression;
 use geo_types::{
     Coord, Geometry, Line, LineString, MultiLineString, MultiPoint, MultiPolygon, Polygon,
 };
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use mvt::{GeomData, GeomEncoder, GeomType, Tile};
 use mvt_reader::Reader;
-use rusqlite::{params, Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, params};
 use serde::Serialize;
 use tracing::warn;
 

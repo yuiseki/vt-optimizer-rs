@@ -4,7 +4,7 @@ use std::path::Path;
 use mvt::{GeomEncoder, GeomType, Tile};
 use mvt_reader::Reader;
 
-use vt_optimizer::mbtiles::{inspect_mbtiles, prune_mbtiles_layer_only, PruneOptions};
+use vt_optimizer::mbtiles::{PruneOptions, inspect_mbtiles, prune_mbtiles_layer_only};
 use vt_optimizer::style::read_style;
 
 fn create_layer_tile() -> Vec<u8> {

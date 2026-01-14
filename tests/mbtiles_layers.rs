@@ -2,7 +2,7 @@ use std::path::Path;
 
 use mvt::{GeomEncoder, GeomType, Tile};
 
-use vt_optimizer::mbtiles::{inspect_mbtiles_with_options, FileLayerSummary, InspectOptions};
+use vt_optimizer::mbtiles::{FileLayerSummary, InspectOptions, inspect_mbtiles_with_options};
 
 fn create_layer_tile() -> Vec<u8> {
     let mut tile = Tile::new(4096);

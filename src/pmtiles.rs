@@ -5,19 +5,19 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use brotli::{CompressorWriter, Decompressor};
+use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
-use flate2::Compression;
-use hilbert_2d::{h2xy_discrete, xy2h_discrete, Variant};
+use hilbert_2d::{Variant, h2xy_discrete, xy2h_discrete};
 use mvt_reader::Reader;
 use rusqlite::Connection;
 use serde_json::Value;
 use varint_rs::{VarintReader, VarintWriter};
 
 use crate::mbtiles::{
-    count_vertices, encode_tile_payload, format_property_value, prune_tile_layers,
-    simplify_tile_payload, HistogramBucket, InspectOptions, MbtilesReport, MbtilesStats,
-    MbtilesZoomStats, PruneStats, SimplifyStats, TileCoord, ZoomHistogram,
+    HistogramBucket, InspectOptions, MbtilesReport, MbtilesStats, MbtilesZoomStats, PruneStats,
+    SimplifyStats, TileCoord, ZoomHistogram, count_vertices, encode_tile_payload,
+    format_property_value, prune_tile_layers, simplify_tile_payload,
 };
 
 const HEADER_SIZE: usize = 127;

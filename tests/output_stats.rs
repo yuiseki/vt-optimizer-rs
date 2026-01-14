@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use vt_optimizer::mbtiles::{HistogramBucket, MbtilesReport, MbtilesStats};
-use vt_optimizer::output::{apply_stats_filter, parse_stats_filter, StatsSection};
+use vt_optimizer::output::{StatsSection, apply_stats_filter, parse_stats_filter};
 
 #[test]
 fn parse_stats_filter_selects_sections() {

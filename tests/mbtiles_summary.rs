@@ -1,10 +1,10 @@
 use std::io::Write;
 use std::path::Path;
 
-use flate2::{write::GzEncoder, Compression};
+use flate2::{Compression, write::GzEncoder};
 use mvt::{GeomEncoder, GeomType, Tile};
 
-use vt_optimizer::mbtiles::{inspect_mbtiles_with_options, InspectOptions, TileCoord};
+use vt_optimizer::mbtiles::{InspectOptions, TileCoord, inspect_mbtiles_with_options};
 
 fn create_vector_tile() -> Vec<u8> {
     let mut tile = Tile::new(4096);
