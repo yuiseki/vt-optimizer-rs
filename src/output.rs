@@ -391,13 +391,34 @@ pub fn format_histogram_table(buckets: &[HistogramBucket]) -> Vec<String> {
 }
 
 pub fn format_tile_summary_text(summary: &TileSummary) -> Vec<String> {
+    let label = |text: &str| Color::Blue.paint(text).to_string();
     vec![
         format!("- z={} x={} y={}", summary.zoom, summary.x, summary.y),
-        format!("- Layers in this tile: {}", summary.layer_count),
-        format!("- Features in this tile: {}", summary.total_features),
-        format!("- Vertices in this tile: {}", summary.vertex_count),
-        format!("- Keys in this tile: {}", summary.property_key_count),
-        format!("- Values in this tile: {}", summary.property_value_count),
+        format!(
+            "- {}: {}",
+            label("Layers in this tile"),
+            summary.layer_count
+        ),
+        format!(
+            "- {}: {}",
+            label("Features in this tile"),
+            summary.total_features
+        ),
+        format!(
+            "- {}: {}",
+            label("Vertices in this tile"),
+            summary.vertex_count
+        ),
+        format!(
+            "- {}: {}",
+            label("Keys in this tile"),
+            summary.property_key_count
+        ),
+        format!(
+            "- {}: {}",
+            label("Values in this tile"),
+            summary.property_value_count
+        ),
     ]
 }
 

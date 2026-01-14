@@ -20,6 +20,11 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.3.2] - 2026-01-14
+### Changed
+- Limit compat z/x/y inspection output to tile summary only.
+- Add label coloring for tile summary entries (including layer/keys lines).
+
 ## [0.3.1] - 2026-01-14
 ### Changed
 - Improve inspect text output readability (colored labels, title styling, path underline).

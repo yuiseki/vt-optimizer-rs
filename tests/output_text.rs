@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use nu_ansi_term::Color;
 use vt_optimizer::mbtiles::{HistogramBucket, TileSummary, ZoomHistogram};
 use vt_optimizer::output::{
     format_histogram_table, format_histograms_by_zoom_section, format_metadata_section,
@@ -150,11 +151,11 @@ fn format_tile_summary_text_includes_tile_counts() {
         lines,
         vec![
             "- z=12 x=345 y=678".to_string(),
-            "- Layers in this tile: 3".to_string(),
-            "- Features in this tile: 42".to_string(),
-            "- Vertices in this tile: 9001".to_string(),
-            "- Keys in this tile: 7".to_string(),
-            "- Values in this tile: 9".to_string(),
+            format!("- {}: 3", Color::Blue.paint("Layers in this tile")),
+            format!("- {}: 42", Color::Blue.paint("Features in this tile")),
+            format!("- {}: 9001", Color::Blue.paint("Vertices in this tile")),
+            format!("- {}: 7", Color::Blue.paint("Keys in this tile")),
+            format!("- {}: 9", Color::Blue.paint("Values in this tile")),
         ]
     );
 }

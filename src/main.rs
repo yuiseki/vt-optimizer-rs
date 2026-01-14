@@ -212,11 +212,11 @@ fn main() -> Result<()> {
                 let args = vt_optimizer::cli::InspectArgs {
                     input: input.clone(),
                     max_tile_bytes: 1_280_000,
-                    histogram_buckets: 10,
+                    histogram_buckets: 0,
                     topn: None,
                     sample: None,
                     output: vt_optimizer::cli::ReportFormat::Text,
-                    stats: None,
+                    stats: Some("tile_summary".to_string()),
                     no_progress: false,
                     zoom: None,
                     bucket: None,
@@ -275,6 +275,7 @@ fn init_tracing(level: &str) {
 
 fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     let output = resolve_output_format(args.output, args.ndjson_compact);
+    let stats_filter = vt_optimizer::output::parse_stats_filter(args.stats.as_deref())?;
     if args.ndjson_lite && output != ReportFormat::Ndjson {
         anyhow::bail!("--ndjson-lite requires --output ndjson");
     }
@@ -326,7 +327,9 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
         summary: args.summary,
         layers,
         recommend: args.recommend,
-        include_layer_list: output == ReportFormat::Text,
+        include_layer_list: output == ReportFormat::Text
+            && (stats_filter.includes(vt_optimizer::output::StatsSection::Layers)
+                || stats_filter.includes(vt_optimizer::output::StatsSection::Summary)),
         list_tiles: if args.list_tiles {
             Some(TileListOptions {
                 limit: args.limit,
@@ -349,7 +352,6 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
             inspect_pmtiles_with_options(&args.input, &options)?
         }
     };
-    let stats_filter = vt_optimizer::output::parse_stats_filter(args.stats.as_deref())?;
     let report = vt_optimizer::output::apply_tile_info_format(report, args.tile_info_format);
     let summary_totals = if stats_filter.includes(vt_optimizer::output::StatsSection::Summary) {
         vt_optimizer::output::summarize_file_layers(&report.file_layers)
@@ -609,7 +611,8 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                     );
                     for layer in summary.layers.iter() {
                         println!(
-                            "  layer: {} features={} vertices={} property_keys={} values={}",
+                            "  {}: {} features={} vertices={} property_keys={} values={}",
+                            Style::new().fg(Color::Blue).paint("layer"),
                             layer.name,
                             layer.feature_count,
                             layer.vertex_count,
@@ -628,7 +631,8 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                     }
                     for layer in summary.layers.iter() {
                         println!(
-                            "  layer: {} features={} vertices={} property_keys={} values={}",
+                            "  {}: {} features={} vertices={} property_keys={} values={}",
+                            Style::new().fg(Color::Blue).paint("layer"),
                             layer.name,
                             layer.feature_count,
                             layer.vertex_count,
@@ -636,7 +640,11 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                             layer.property_value_count
                         );
                         if !layer.property_keys.is_empty() {
-                            println!("    keys: {}", layer.property_keys.join(","));
+                            println!(
+                                "    {}: {}",
+                                Style::new().fg(Color::Blue).paint("keys"),
+                                layer.property_keys.join(",")
+                            );
                         }
                     }
                 }
