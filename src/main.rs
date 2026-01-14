@@ -351,6 +351,11 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     };
     let stats_filter = vt_optimizer::output::parse_stats_filter(args.stats.as_deref())?;
     let report = vt_optimizer::output::apply_tile_info_format(report, args.tile_info_format);
+    let summary_totals = if stats_filter.includes(vt_optimizer::output::StatsSection::Summary) {
+        vt_optimizer::output::summarize_file_layers(&report.file_layers)
+    } else {
+        None
+    };
     let report = vt_optimizer::output::apply_stats_filter(report, &stats_filter);
     match output {
         ReportFormat::Json => {
@@ -420,9 +425,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                         report.sample_used_tiles, report.sample_total_tiles
                     );
                 }
-                if let Some(totals) =
-                    vt_optimizer::output::summarize_file_layers(&report.file_layers)
-                {
+                if let Some(totals) = summary_totals {
                     println!("- Layers in this tile: {}", totals.layer_count);
                     println!("- Features in this tile: {}", totals.feature_count);
                     println!("- Vertices in this tile: {}", totals.vertex_count);
