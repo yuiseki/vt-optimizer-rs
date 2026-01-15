@@ -1494,6 +1494,19 @@ fn make_progress_bar(total: u64) -> ProgressBar {
     bar
 }
 
+fn make_spinner(message: &str) -> ProgressBar {
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_draw_target(ProgressDrawTarget::stderr_with_hz(20));
+    spinner.set_style(
+        ProgressStyle::with_template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    );
+    spinner.set_message(message.to_string());
+    spinner.enable_steady_tick(Duration::from_millis(80));
+    spinner
+}
+
 pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesReport> {
     inspect_mbtiles_with_options(path, InspectOptions::default())
 }
@@ -1763,7 +1776,17 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         result.sort_by(|a, b| a.name.cmp(&b.name));
         result
     } else if options.include_layer_list && options.sample.is_none() {
-        build_file_layer_list(&conn, options.sample.as_ref(), total_tiles, options.zoom)?
+        let spinner = if options.no_progress {
+            None
+        } else {
+            Some(make_spinner("processing layers"))
+        };
+        let result =
+            build_file_layer_list(&conn, options.sample.as_ref(), total_tiles, options.zoom)?;
+        if let Some(spinner) = spinner {
+            spinner.finish_and_clear();
+        }
+        result
     } else {
         Vec::new()
     };
