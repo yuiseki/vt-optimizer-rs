@@ -502,7 +502,7 @@ pub fn format_tile_summary_text(summary: &TileSummary) -> Vec<String> {
         format!("- z={} x={} y={}", summary.zoom, summary.x, summary.y),
         format!(
             "- {}: {}",
-            label("Tile size"),
+            label("Size of tile"),
             format_bytes(summary.tile_bytes)
         ),
         format!(

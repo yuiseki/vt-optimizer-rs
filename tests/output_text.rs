@@ -205,7 +205,7 @@ fn format_tile_summary_text_includes_tile_counts() {
         lines,
         vec![
             "- z=12 x=345 y=678".to_string(),
-            format!("- {}: 2.00KB", Color::Blue.paint("Tile size")),
+            format!("- {}: 2.00KB", Color::Blue.paint("Size of tile")),
             format!("- {}: 3", Color::Blue.paint("Layers in this tile")),
             format!("- {}: 42", Color::Blue.paint("Features in this tile")),
             format!("- {}: 9001", Color::Blue.paint("Vertices in this tile")),
