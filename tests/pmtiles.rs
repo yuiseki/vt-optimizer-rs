@@ -432,6 +432,28 @@ fn inspect_pmtiles_builds_histograms_by_zoom() {
 }
 
 #[test]
+fn inspect_pmtiles_collects_top_tiles() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let input = dir.path().join("input.mbtiles");
+    let pmtiles = dir.path().join("output.pmtiles");
+    create_sample_mbtiles(&input);
+
+    mbtiles_to_pmtiles(&input, &pmtiles).expect("mbtiles->pmtiles");
+    let options = InspectOptions {
+        topn: 1,
+        ..Default::default()
+    };
+    let report = inspect_pmtiles_with_options(&pmtiles, &options).expect("inspect pmtiles");
+
+    assert_eq!(report.top_tiles.len(), 1);
+    let tile = &report.top_tiles[0];
+    assert_eq!(tile.zoom, 1);
+    assert_eq!(tile.x, 1);
+    assert_eq!(tile.y, 1);
+    assert_eq!(tile.bytes, 20);
+}
+
+#[test]
 fn inspect_pmtiles_collects_layer_list() {
     let dir = tempfile::tempdir().expect("tempdir");
     let input = dir.path().join("input.mbtiles");

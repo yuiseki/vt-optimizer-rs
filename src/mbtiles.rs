@@ -116,6 +116,7 @@ pub struct TileSummary {
     pub zoom: u8,
     pub x: u32,
     pub y: u32,
+    pub tile_bytes: u64,
     pub layer_count: usize,
     pub total_features: usize,
     pub vertex_count: u64,
@@ -937,6 +938,7 @@ fn build_tile_summary(
             row.get(0)
         })
         .context("failed to read tile data")?;
+    let tile_bytes = u64::try_from(data.len()).context("tile data size overflow")?;
     let payload = decode_tile_payload(&data)?;
     let reader =
         Reader::new(payload).map_err(|err| anyhow::anyhow!("decode vector tile: {err}"))?;
@@ -996,6 +998,7 @@ fn build_tile_summary(
         zoom: coord.zoom,
         x: coord.x,
         y: coord.y,
+        tile_bytes,
         layer_count: summaries.len(),
         total_features,
         vertex_count: total_vertices,

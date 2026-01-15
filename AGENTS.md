@@ -10,9 +10,11 @@
 - Use PRs for `main` (direct push is blocked); `release` is the promotion branch.
 - Direct pushes to `main` are blocked.
 - Always use `.github/PULL_REQUEST_TEMPLATE.md` when creating pull requests.
+- Fork the repository on GitHub and open pull requests against the upstream repository (not your fork).
 - When editing PR bodies, do not paste raw `cargo test --verbose` output. If you ran `make test` and it passed, just check the Testing checkbox.
 - Do not use `gh pr edit` to update PR bodies. Use `gh api -X PATCH` instead.
 - Avoid `gh pr create`. Create PRs with `gh api -X POST /repos/<owner>/<repo>/pulls` and pass `title`, `head`, `base`, and `body`.
 - Always update `CHANGELOG.md` for user-visible changes before releasing.
 - When asked to bump versions, follow `docs/RELEASE.md`.
+- Release version bump PR branches must be named `bump/v<version>` (for example, `bump/v0.4.4`).
 - Release flow: `main` → `release` PRs are auto-created/updated; tags are created by workflow on `release` merges and releases are dispatched automatically.

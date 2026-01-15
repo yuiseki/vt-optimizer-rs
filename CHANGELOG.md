@@ -20,6 +20,15 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.4.4] - 2026-01-15
+### Added
+- Add tile size to tile summary output ("Size of tile").
+- Add progress indicators for PMTiles inspect (spinner/bar depending on estimate availability).
+
+### Changed
+- Align PMTiles inspect output sections with MBTiles.
+- Enforce Cargo.toml version bump for release PRs via CI.
+
 ## [0.4.3] - 2026-01-14
 ### Added
 - Add a "Top 10 big tiles" section to inspect text output (respects --zoom).

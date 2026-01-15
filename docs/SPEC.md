@@ -561,6 +561,12 @@ v0.0.4 では以下を **含めない**。
 * `inspect` の text 出力に Top 10 big tiles セクションを追加
 * `inspect` で `-z/-x/-y` 指定時に Tile Summary を表示
 
+## 1.67 マイルストーン（v0.4.4）
+
+* `inspect --tile --summary` の Tile Summary に **タイルサイズ** を追加
+* `inspect` の PMTiles 出力セクションを MBTiles と揃える（Summary/Histogram/Top Tiles 等）
+* `inspect` の PMTiles でも進捗表示を有効化（推定値が取れる場合はバー、難しい場合はスピナー）
+
 ## 2. 用語
 
 * **Tile key**: `z/x/y`（内部表現は XYZ）
