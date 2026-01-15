@@ -9,9 +9,11 @@ Thanks for your interest in improving vt-optimizer-rs. Contributions are welcome
 - Feature requests: describe the use case and expected output.
 
 ### Pull requests
+- Fork the repository on GitHub and work on a branch in your fork.
 - Keep changes small and focused.
 - Add or update tests when behavior changes.
 - Update documentation when you add or change CLI options.
+- Open pull requests against the upstream repository (not your fork).
 
 ## Development
 
