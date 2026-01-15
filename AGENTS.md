@@ -16,4 +16,5 @@
 - Avoid `gh pr create`. Create PRs with `gh api -X POST /repos/<owner>/<repo>/pulls` and pass `title`, `head`, `base`, and `body`.
 - Always update `CHANGELOG.md` for user-visible changes before releasing.
 - When asked to bump versions, follow `docs/RELEASE.md`.
+- Release version bump PR branches must be named `bump/v<version>` (for example, `bump/v0.4.4`).
 - Release flow: `main` → `release` PRs are auto-created/updated; tags are created by workflow on `release` merges and releases are dispatched automatically.
