@@ -277,6 +277,7 @@ pub fn ndjson_lines(report: &MbtilesReport, mut options: NdjsonOptions) -> Resul
                 "z": summary.zoom,
                 "x": summary.x,
                 "y": summary.y,
+                "bytes": summary.tile_bytes,
                 "layers": summary.layer_count,
                 "total_features": summary.total_features,
                 "vertices": summary.vertex_count,
@@ -304,14 +305,15 @@ pub fn ndjson_lines(report: &MbtilesReport, mut options: NdjsonOptions) -> Resul
         for summary in report.top_tile_summaries.iter() {
             if options.compact {
                 lines.push(serde_json::to_string(&json!({
-                    "type": "top_tile_summary",
-                    "z": summary.zoom,
-                    "x": summary.x,
-                    "y": summary.y,
-                    "layers": summary.layer_count,
-                    "total_features": summary.total_features,
-                    "vertices": summary.vertex_count,
-                    "keys": summary.property_key_count,
+                "type": "top_tile_summary",
+                "z": summary.zoom,
+                "x": summary.x,
+                "y": summary.y,
+                "bytes": summary.tile_bytes,
+                "layers": summary.layer_count,
+                "total_features": summary.total_features,
+                "vertices": summary.vertex_count,
+                "keys": summary.property_key_count,
                     "values": summary.property_value_count,
                 }))?);
             } else {
@@ -498,6 +500,11 @@ pub fn format_tile_summary_text(summary: &TileSummary) -> Vec<String> {
     let label = |text: &str| Color::Blue.paint(text).to_string();
     vec![
         format!("- z={} x={} y={}", summary.zoom, summary.x, summary.y),
+        format!(
+            "- {}: {}",
+            label("Tile size"),
+            format_bytes(summary.tile_bytes)
+        ),
         format!(
             "- {}: {}",
             label("Layers in this tile"),

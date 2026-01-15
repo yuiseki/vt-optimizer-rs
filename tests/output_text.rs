@@ -190,6 +190,7 @@ fn format_tile_summary_text_includes_tile_counts() {
         zoom: 12,
         x: 345,
         y: 678,
+        tile_bytes: 2048,
         layer_count: 3,
         total_features: 42,
         vertex_count: 9001,
@@ -204,6 +205,7 @@ fn format_tile_summary_text_includes_tile_counts() {
         lines,
         vec![
             "- z=12 x=345 y=678".to_string(),
+            format!("- {}: 2.00KB", Color::Blue.paint("Tile size")),
             format!("- {}: 3", Color::Blue.paint("Layers in this tile")),
             format!("- {}: 42", Color::Blue.paint("Features in this tile")),
             format!("- {}: 9001", Color::Blue.paint("Vertices in this tile")),
