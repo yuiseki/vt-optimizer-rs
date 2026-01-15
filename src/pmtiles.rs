@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, HashSet};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, HashSet};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
@@ -16,14 +17,37 @@ use varint_rs::{VarintReader, VarintWriter};
 
 use crate::mbtiles::{
     HistogramBucket, InspectOptions, MbtilesReport, MbtilesStats, MbtilesZoomStats, PruneStats,
-    SimplifyStats, TileCoord, ZoomHistogram, count_vertices, encode_tile_payload,
-    format_property_value, prune_tile_layers, simplify_tile_payload,
+    SimplifyStats, TileCoord, TileListOptions, TileSort, TopTile, ZoomHistogram, count_vertices,
+    encode_tile_payload, format_property_value, prune_tile_layers, simplify_tile_payload,
 };
 
 const HEADER_SIZE: usize = 127;
 const MAGIC: &[u8; 7] = b"PMTiles";
 const VERSION: u8 = 3;
 const EMPTY_TILE_MAX_BYTES: u64 = 50;
+
+fn histogram_bucket_index_pmtiles(
+    value: u64,
+    min_len: Option<u64>,
+    max_len: Option<u64>,
+    buckets: usize,
+) -> Option<usize> {
+    if buckets == 0 {
+        return None;
+    }
+    let min_len = min_len?;
+    let max_len = max_len?;
+    if min_len > max_len {
+        return None;
+    }
+    let range = (max_len - min_len).max(1);
+    let bucket_size = ((range as f64) / buckets as f64).ceil() as u64;
+    let mut bucket = ((value.saturating_sub(min_len)) / bucket_size) as usize;
+    if bucket >= buckets {
+        bucket = buckets - 1;
+    }
+    Some(bucket)
+}
 
 #[derive(Debug, Clone)]
 struct Header {
@@ -1039,6 +1063,96 @@ fn build_file_layer_list_pmtiles(
     Ok(result)
 }
 
+#[allow(clippy::too_many_arguments)]
+fn collect_top_tiles_from_entries(
+    file: &File,
+    header: &Header,
+    entries: &[Entry],
+    zoom_filter: Option<u8>,
+    topn: usize,
+    bucket: Option<usize>,
+    list_options: Option<&TileListOptions>,
+    min_len: Option<u64>,
+    max_len: Option<u64>,
+    histogram_buckets: usize,
+) -> Result<(Vec<TopTile>, Vec<TopTile>)> {
+    if topn == 0 && (bucket.is_none() || list_options.is_none()) {
+        return Ok((Vec::new(), Vec::new()));
+    }
+
+    let mut top_heap: BinaryHeap<Reverse<(u64, u8, u32, u32)>> = BinaryHeap::new();
+    let mut bucket_tiles: Vec<TopTile> = Vec::new();
+    let bucket_target = bucket.unwrap_or(0);
+    let bucketable = bucket.is_some()
+        && list_options.is_some()
+        && histogram_buckets > 0
+        && min_len.is_some()
+        && max_len.is_some();
+
+    let mut stack = vec![entries.to_vec()];
+    while let Some(entries) = stack.pop() {
+        for entry in entries.iter() {
+            if entry.run_length == 0 {
+                if entry.length == 0 {
+                    continue;
+                }
+                let leaf_offset = header.leaf_offset + entry.offset;
+                let leaf_entries =
+                    read_directory_section(file, header, leaf_offset, entry.length as u64)?;
+                stack.push(leaf_entries);
+                continue;
+            }
+            let length = entry.length as u64;
+            let run = entry.run_length.max(1);
+            for idx in 0..run {
+                let tile_id = entry.tile_id + idx as u64;
+                let (z, x, y) = tile_id_to_xyz(tile_id);
+                if let Some(target_zoom) = zoom_filter
+                    && z != target_zoom
+                {
+                    continue;
+                }
+                if topn > 0 {
+                    top_heap.push(Reverse((length, z, x, y)));
+                    if top_heap.len() > topn {
+                        top_heap.pop();
+                    }
+                }
+                if bucketable
+                    && let Some(bucket_idx) =
+                        histogram_bucket_index_pmtiles(length, min_len, max_len, histogram_buckets)
+                    && bucket_idx == bucket_target
+                {
+                    bucket_tiles.push(TopTile {
+                        zoom: z,
+                        x,
+                        y,
+                        bytes: length,
+                    });
+                    let list_options = list_options.expect("list options");
+                    if bucket_tiles.len() > list_options.limit {
+                        if list_options.sort == TileSort::Size {
+                            bucket_tiles.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+                        } else {
+                            bucket_tiles
+                                .sort_by(|a, b| (a.zoom, a.x, a.y).cmp(&(b.zoom, b.x, b.y)));
+                        }
+                        bucket_tiles.truncate(list_options.limit);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut top_tiles = top_heap
+        .into_iter()
+        .map(|Reverse((bytes, zoom, x, y))| TopTile { zoom, x, y, bytes })
+        .collect::<Vec<_>>();
+    top_tiles.sort_by(|a, b| b.bytes.cmp(&a.bytes));
+
+    Ok((top_tiles, bucket_tiles))
+}
+
 pub fn inspect_pmtiles_with_options(
     path: &Path,
     options: &InspectOptions,
@@ -1091,6 +1205,19 @@ pub fn inspect_pmtiles_with_options(
         _ => Vec::new(),
     };
 
+    let (top_tiles, bucket_tiles) = collect_top_tiles_from_entries(
+        &file,
+        &header,
+        &root_entries,
+        options.zoom,
+        options.topn,
+        options.bucket,
+        options.list_tiles.as_ref(),
+        min_len,
+        max_len,
+        options.histogram_buckets,
+    )?;
+
     let histograms_by_zoom = build_zoom_histograms_from_entries(
         &file,
         &header,
@@ -1122,6 +1249,40 @@ pub fn inspect_pmtiles_with_options(
         empty_tiles as f64 / overall_stats.tile_count as f64
     };
 
+    let bucket_count = options
+        .bucket
+        .and_then(|idx| histogram.get(idx).map(|b| b.count));
+
+    let recommended_buckets = if options.recommend {
+        let mut indices = histogram
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, bucket)| {
+                if bucket.avg_over_limit {
+                    Some(idx)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        if indices.is_empty() {
+            indices = histogram
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, bucket)| {
+                    if bucket.avg_near_limit {
+                        Some(idx)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+        }
+        indices
+    } else {
+        Vec::new()
+    };
+
     Ok(MbtilesReport {
         metadata,
         overall: overall_stats,
@@ -1134,11 +1295,11 @@ pub fn inspect_pmtiles_with_options(
         histogram,
         histograms_by_zoom,
         file_layers,
-        top_tiles: Vec::new(),
-        bucket_count: None,
-        bucket_tiles: Vec::new(),
+        top_tiles,
+        bucket_count,
+        bucket_tiles,
         tile_summary: None,
-        recommended_buckets: Vec::new(),
+        recommended_buckets,
         top_tile_summaries: Vec::new(),
     })
 }
