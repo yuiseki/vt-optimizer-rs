@@ -467,6 +467,7 @@ pub(crate) fn prune_tile_layers(
     style: &crate::style::MapboxStyle,
     keep_layers: &HashSet<String>,
     apply_filters: bool,
+    keep_unknown_filters: bool,
     stats: &mut PruneStats,
 ) -> Result<PrunedTile> {
     let reader = Reader::new(payload.to_vec())
@@ -512,6 +513,9 @@ pub(crate) fn prune_tile_layers(
                     crate::style::FilterResult::True => {}
                     crate::style::FilterResult::Unknown => {
                         stats.record_unknown_layer(&layer.name);
+                        if !keep_unknown_filters {
+                            continue;
+                        }
                     }
                     crate::style::FilterResult::False => {
                         continue;
@@ -2266,6 +2270,7 @@ pub struct PruneOptions {
     pub read_cache_mb: Option<u64>,
     pub write_cache_mb: Option<u64>,
     pub drop_empty_tiles: bool,
+    pub keep_unknown_filters: bool,
 }
 
 pub fn prune_mbtiles_layer_only(
@@ -2320,6 +2325,7 @@ pub fn prune_mbtiles_layer_only(
         let keep_layers = keep_layers.clone();
         let style = style.clone();
         let drop_empty_tiles = options.drop_empty_tiles;
+        let keep_unknown_filters = options.keep_unknown_filters;
         worker_handles.push(thread::spawn(move || -> Result<PruneStats> {
             let mut stats = PruneStats::default();
             while let Ok(tile) = rx_in.recv() {
@@ -2331,6 +2337,7 @@ pub fn prune_mbtiles_layer_only(
                     &style,
                     &keep_layers,
                     apply_filters,
+                    keep_unknown_filters,
                     &mut stats,
                 )?;
                 if encoded.empty && drop_empty_tiles {

@@ -1,7 +1,7 @@
 use clap::{CommandFactory, Parser};
 
 use vt_optimizer::cli::ReportFormat;
-use vt_optimizer::cli::{Cli, Command, StyleMode, TileInfoFormat};
+use vt_optimizer::cli::{Cli, Command, StyleMode, TileInfoFormat, UnknownFilterMode};
 
 #[test]
 fn parse_optimize_minimal() {
@@ -14,6 +14,7 @@ fn parse_optimize_minimal() {
             assert_eq!(args.output_format, None);
             assert_eq!(args.style, None);
             assert_eq!(args.style_mode, StyleMode::LayerFilter);
+            assert_eq!(args.unknown_filter, UnknownFilterMode::Keep);
             assert_eq!(args.max_tile_bytes, 1_280_000);
             assert_eq!(args.threads, None);
             assert_eq!(args.io_batch, 1_000);
@@ -40,6 +41,8 @@ fn parse_optimize_options() {
         "style.json",
         "--style-mode",
         "layer+filter",
+        "--unknown-filter",
+        "drop",
         "--max-tile-bytes",
         "2048",
         "--threads",
@@ -59,6 +62,7 @@ fn parse_optimize_options() {
             assert_eq!(args.output_format.unwrap(), "pmtiles");
             assert_eq!(args.style.unwrap().as_os_str(), "style.json");
             assert_eq!(args.style_mode, StyleMode::LayerFilter);
+            assert_eq!(args.unknown_filter, UnknownFilterMode::Drop);
             assert_eq!(args.max_tile_bytes, 2048);
             assert_eq!(args.threads, Some(8));
             assert_eq!(args.io_batch, 200);

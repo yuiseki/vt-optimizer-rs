@@ -135,6 +135,7 @@ fn main() -> Result<()> {
                     output_format: None,
                     style: cli.style.clone(),
                     style_mode: vt_optimizer::cli::StyleMode::VtCompat,
+                    unknown_filter: vt_optimizer::cli::UnknownFilterMode::Keep,
                     max_tile_bytes: 1_280_000,
                     threads: None,
                     readers: None,
@@ -736,6 +737,8 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
                     read_cache_mb: args.read_cache_mb,
                     write_cache_mb: args.write_cache_mb,
                     drop_empty_tiles: args.drop_empty_tiles,
+                    keep_unknown_filters: args.unknown_filter
+                        == vt_optimizer::cli::UnknownFilterMode::Keep,
                 },
             )?;
             println!("- Writing output file to {}", output_path.display());
@@ -744,7 +747,13 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
         (vt_optimizer::format::TileFormat::Pmtiles, vt_optimizer::format::TileFormat::Pmtiles) => {
             let apply_filters = args.style_mode == vt_optimizer::cli::StyleMode::LayerFilter;
             println!("- Processing tiles");
-            let stats = prune_pmtiles_layer_only(&args.input, &output_path, &style, apply_filters)?;
+            let stats = prune_pmtiles_layer_only(
+                &args.input,
+                &output_path,
+                &style,
+                apply_filters,
+                args.unknown_filter == vt_optimizer::cli::UnknownFilterMode::Keep,
+            )?;
             println!("- Writing output file to {}", output_path.display());
             print_prune_summary(&stats);
         }

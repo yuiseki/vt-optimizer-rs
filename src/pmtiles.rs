@@ -1485,6 +1485,7 @@ pub fn prune_pmtiles_layer_only(
     output: &Path,
     style: &crate::style::MapboxStyle,
     apply_filters: bool,
+    keep_unknown_filters: bool,
 ) -> Result<PruneStats> {
     ensure_pmtiles_path(input)?;
     ensure_pmtiles_path(output)?;
@@ -1528,8 +1529,15 @@ pub fn prune_pmtiles_layer_only(
                 let (z, _x, _y) = tile_id_to_xyz(tile_id);
                 min_zoom = min_zoom.min(z);
                 max_zoom = max_zoom.max(z);
-                let encoded =
-                    prune_tile_layers(&payload, z, style, &keep_layers, apply_filters, &mut stats)?;
+                let encoded = prune_tile_layers(
+                    &payload,
+                    z,
+                    style,
+                    &keep_layers,
+                    apply_filters,
+                    keep_unknown_filters,
+                    &mut stats,
+                )?;
                 let tile_data =
                     encode_tile_payload_pmtiles(&encoded.bytes, header.tile_compression)?;
                 tiles.push((tile_id, tile_data));

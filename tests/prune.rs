@@ -136,6 +136,7 @@ fn prune_mbtiles_removes_unlisted_layers() {
             read_cache_mb: None,
             write_cache_mb: None,
             drop_empty_tiles: false,
+            keep_unknown_filters: true,
         },
     )
     .expect("prune mbtiles");
@@ -181,6 +182,7 @@ fn prune_mbtiles_supports_map_images_schema() {
             read_cache_mb: None,
             write_cache_mb: None,
             drop_empty_tiles: false,
+            keep_unknown_filters: true,
         },
     )
     .expect("prune mbtiles");
@@ -217,6 +219,7 @@ fn prune_mbtiles_handles_multiple_tiles() {
             read_cache_mb: None,
             write_cache_mb: None,
             drop_empty_tiles: false,
+            keep_unknown_filters: true,
         },
     )
     .expect("prune mbtiles");
@@ -291,6 +294,7 @@ fn prune_mbtiles_filters_features_by_style() {
             read_cache_mb: None,
             write_cache_mb: None,
             drop_empty_tiles: false,
+            keep_unknown_filters: true,
         },
     )
     .expect("prune mbtiles");
@@ -345,6 +349,7 @@ fn prune_mbtiles_keeps_features_on_unknown_filter() {
             read_cache_mb: None,
             write_cache_mb: None,
             drop_empty_tiles: false,
+            keep_unknown_filters: true,
         },
     )
     .expect("prune mbtiles");
@@ -361,6 +366,52 @@ fn prune_mbtiles_keeps_features_on_unknown_filter() {
     let layers = reader.get_layer_metadata().expect("layers");
     assert_eq!(layers.len(), 1);
     assert_eq!(layers[0].name, "roads");
+}
+
+#[test]
+fn prune_mbtiles_drops_features_on_unknown_filter_when_configured() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let input = dir.path().join("input.mbtiles");
+    let output = dir.path().join("output.mbtiles");
+    let style_path = dir.path().join("style.json");
+
+    create_layer_mbtiles(&input);
+
+    fs::write(
+        &style_path,
+        r#"{"version":8,"sources":{"osm":{"type":"vector"}},"layers":[{"id":"roads","type":"line","source":"osm","source-layer":"roads","filter":["mystery",["get","class"],"primary"]}]}"#,
+    )
+    .expect("write style");
+    let style = read_style(&style_path).expect("read style");
+
+    prune_mbtiles_layer_only(
+        &input,
+        &output,
+        &style,
+        true,
+        PruneOptions {
+            threads: 2,
+            io_batch: 10,
+            readers: 2,
+            read_cache_mb: None,
+            write_cache_mb: None,
+            drop_empty_tiles: false,
+            keep_unknown_filters: false,
+        },
+    )
+    .expect("prune mbtiles");
+
+    let conn = rusqlite::Connection::open(&output).expect("open output");
+    let data: Vec<u8> = conn
+        .query_row(
+            "SELECT tile_data FROM tiles WHERE zoom_level = 0 AND tile_column = 0 AND tile_row = 0",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read tile");
+    let reader = Reader::new(data).expect("decode");
+    let layers = reader.get_layer_metadata().expect("layers");
+    assert_eq!(layers.len(), 0);
 }
 
 #[test]
@@ -391,6 +442,7 @@ fn prune_mbtiles_handles_multiple_readers() {
             read_cache_mb: None,
             write_cache_mb: None,
             drop_empty_tiles: false,
+            keep_unknown_filters: true,
         },
     )
     .expect("prune mbtiles");
@@ -427,6 +479,7 @@ fn prune_mbtiles_drop_empty_tiles() {
             read_cache_mb: None,
             write_cache_mb: None,
             drop_empty_tiles: true,
+            keep_unknown_filters: true,
         },
     )
     .expect("prune mbtiles");
