@@ -725,9 +725,11 @@ fn accumulate_tile_counts(
     overall: &mut StatAccum,
     by_zoom: &mut BTreeMap<u8, StatAccum>,
     empty_tiles: &mut u64,
+    over_limit_tiles: &mut u64,
     min_len: &mut Option<u64>,
     max_len: &mut Option<u64>,
     zoom_minmax: &mut BTreeMap<u8, (u64, u64)>,
+    max_tile_bytes: u64,
     mut progress: Option<&mut ProgressTracker>,
 ) -> Result<()> {
     for entry in entries {
@@ -746,9 +748,11 @@ fn accumulate_tile_counts(
                 overall,
                 by_zoom,
                 empty_tiles,
+                over_limit_tiles,
                 min_len,
                 max_len,
                 zoom_minmax,
+                max_tile_bytes,
                 progress.as_deref_mut(),
             )?;
             continue;
@@ -772,6 +776,9 @@ fn accumulate_tile_counts(
                     max_bytes: 0,
                 })
                 .add_tile(length);
+            if max_tile_bytes > 0 && length > max_tile_bytes {
+                *over_limit_tiles += 1;
+            }
             if length <= EMPTY_TILE_MAX_BYTES {
                 *empty_tiles += 1;
             }
@@ -1281,6 +1288,7 @@ pub fn inspect_pmtiles_with_options(
     };
     let mut by_zoom: BTreeMap<u8, StatAccum> = BTreeMap::new();
     let mut empty_tiles = 0u64;
+    let mut over_limit_tiles = 0u64;
     let mut min_len: Option<u64> = None;
     let mut max_len: Option<u64> = None;
     let mut zoom_minmax: BTreeMap<u8, (u64, u64)> = BTreeMap::new();
@@ -1298,9 +1306,11 @@ pub fn inspect_pmtiles_with_options(
         &mut overall,
         &mut by_zoom,
         &mut empty_tiles,
+        &mut over_limit_tiles,
         &mut min_len,
         &mut max_len,
         &mut zoom_minmax,
+        options.max_tile_bytes,
         counting_progress.as_mut(),
     )?;
     if let Some(progress) = counting_progress {
@@ -1465,6 +1475,7 @@ pub fn inspect_pmtiles_with_options(
         by_zoom,
         empty_tiles,
         empty_ratio,
+        over_limit_tiles,
         sampled: false,
         sample_total_tiles: 0,
         sample_used_tiles: 0,

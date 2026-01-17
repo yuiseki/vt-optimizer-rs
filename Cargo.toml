@@ -1,6 +1,6 @@
 [package]
 name = "vt-optimizer-rs"
-version = "0.4.5"
+version = "0.4.6"
 edition = "2024"
 license = "MIT"
 description = "A fast CLI to inspect and optimize MBTiles/PMTiles vector tiles."

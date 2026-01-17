@@ -9,16 +9,27 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
-- Add `--unknown-filter` mode to control handling of unsupported style expressions during optimize.
+- TBD_UNVT_CHANGELOG_ADDED
 
 ### Changed
-- Remove unsupported `--style-mode none` option.
+- TBD_UNVT_CHANGELOG_CHANGED
 
 ### Fixed
 - TBD_UNVT_CHANGELOG_FIXED
 
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
+
+## [0.4.6] - 2026-01-17
+### Added
+- Count tiles over `--max-tile-bytes` in inspect outputs for MBTiles/PMTiles.
+
+## [0.4.5] - 2026-01-17
+### Added
+- Add `--unknown-filter` mode to control handling of unsupported style expressions during optimize.
+
+### Changed
+- Remove unsupported `--style-mode none` option.
 
 ## [0.4.4] - 2026-01-15
 ### Added
