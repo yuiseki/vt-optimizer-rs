@@ -467,6 +467,7 @@ pub(crate) fn prune_tile_layers(
     style: &crate::style::MapboxStyle,
     keep_layers: &HashSet<String>,
     apply_filters: bool,
+    keep_unknown_filters: bool,
     stats: &mut PruneStats,
 ) -> Result<PrunedTile> {
     let reader = Reader::new(payload.to_vec())
@@ -512,6 +513,9 @@ pub(crate) fn prune_tile_layers(
                     crate::style::FilterResult::True => {}
                     crate::style::FilterResult::Unknown => {
                         stats.record_unknown_layer(&layer.name);
+                        if !keep_unknown_filters {
+                            continue;
+                        }
                     }
                     crate::style::FilterResult::False => {
                         continue;
@@ -1494,6 +1498,19 @@ fn make_progress_bar(total: u64) -> ProgressBar {
     bar
 }
 
+fn make_spinner(message: &str) -> ProgressBar {
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_draw_target(ProgressDrawTarget::stderr_with_hz(20));
+    spinner.set_style(
+        ProgressStyle::with_template("{spinner:.cyan} {msg}")
+            .unwrap()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    );
+    spinner.set_message(message.to_string());
+    spinner.enable_steady_tick(Duration::from_millis(80));
+    spinner
+}
+
 pub fn inspect_mbtiles(path: &Path) -> Result<MbtilesReport> {
     inspect_mbtiles_with_options(path, InspectOptions::default())
 }
@@ -1763,7 +1780,17 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         result.sort_by(|a, b| a.name.cmp(&b.name));
         result
     } else if options.include_layer_list && options.sample.is_none() {
-        build_file_layer_list(&conn, options.sample.as_ref(), total_tiles, options.zoom)?
+        let spinner = if options.no_progress {
+            None
+        } else {
+            Some(make_spinner("processing layers"))
+        };
+        let result =
+            build_file_layer_list(&conn, options.sample.as_ref(), total_tiles, options.zoom)?;
+        if let Some(spinner) = spinner {
+            spinner.finish_and_clear();
+        }
+        result
     } else {
         Vec::new()
     };
@@ -2243,6 +2270,7 @@ pub struct PruneOptions {
     pub read_cache_mb: Option<u64>,
     pub write_cache_mb: Option<u64>,
     pub drop_empty_tiles: bool,
+    pub keep_unknown_filters: bool,
 }
 
 pub fn prune_mbtiles_layer_only(
@@ -2297,6 +2325,7 @@ pub fn prune_mbtiles_layer_only(
         let keep_layers = keep_layers.clone();
         let style = style.clone();
         let drop_empty_tiles = options.drop_empty_tiles;
+        let keep_unknown_filters = options.keep_unknown_filters;
         worker_handles.push(thread::spawn(move || -> Result<PruneStats> {
             let mut stats = PruneStats::default();
             while let Ok(tile) = rx_in.recv() {
@@ -2308,6 +2337,7 @@ pub fn prune_mbtiles_layer_only(
                     &style,
                     &keep_layers,
                     apply_filters,
+                    keep_unknown_filters,
                     &mut stats,
                 )?;
                 if encoded.empty && drop_empty_tiles {

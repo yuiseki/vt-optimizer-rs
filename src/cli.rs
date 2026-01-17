@@ -175,6 +175,9 @@ pub struct OptimizeArgs {
     #[arg(long, value_enum, default_value_t = StyleMode::LayerFilter)]
     pub style_mode: StyleMode,
 
+    #[arg(long, value_enum, default_value_t = UnknownFilterMode::Keep)]
+    pub unknown_filter: UnknownFilterMode,
+
     #[arg(long, default_value_t = 1_280_000)]
     pub max_tile_bytes: u64,
 
@@ -247,7 +250,6 @@ pub struct VerifyArgs {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum StyleMode {
-    None,
     Layer,
     #[value(name = "layer+filter")]
     LayerFilter,
@@ -272,4 +274,10 @@ pub enum ReportFormat {
 pub enum TileSortArg {
     Size,
     Zxy,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum UnknownFilterMode {
+    Keep,
+    Drop,
 }

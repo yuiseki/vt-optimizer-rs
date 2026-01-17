@@ -9,10 +9,10 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
-- TBD_UNVT_CHANGELOG_ADDED
+- Add `--unknown-filter` mode to control handling of unsupported style expressions during optimize.
 
 ### Changed
-- TBD_UNVT_CHANGELOG_CHANGED
+- Remove unsupported `--style-mode none` option.
 
 ### Fixed
 - TBD_UNVT_CHANGELOG_FIXED

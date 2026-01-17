@@ -261,7 +261,7 @@ fn prune_pmtiles_removes_unlisted_layers() {
     .expect("write style");
     let style = read_style(&style_path).expect("read style");
 
-    prune_pmtiles_layer_only(&input_pmtiles, &output_pmtiles, &style, false)
+    prune_pmtiles_layer_only(&input_pmtiles, &output_pmtiles, &style, false, true)
         .expect("prune pmtiles");
 
     pmtiles_to_mbtiles(&output_pmtiles, &output_mbtiles).expect("pmtiles->mbtiles");
@@ -305,7 +305,7 @@ fn prune_pmtiles_preserves_tile_compression() {
     .expect("write style");
     let style = read_style(&style_path).expect("read style");
 
-    prune_pmtiles_layer_only(&input_pmtiles, &output_pmtiles, &style, false)
+    prune_pmtiles_layer_only(&input_pmtiles, &output_pmtiles, &style, false, true)
         .expect("prune pmtiles");
 
     let input_tile_compression =
