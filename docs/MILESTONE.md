@@ -4,6 +4,17 @@
 
 このファイルには、超細かいマイルストーンを集約する。
 
+## マイルストーン 0.4.6
+
+* inspect で `--max-tile-bytes` 超過タイル数の厳密カウントを追加（MBTiles/PMTiles）
+
+
+## マイルストーン 0.4.5
+
+* `--unknown-filter drop|keep` を追加
+* `--style-mode none` を削除
+
+
 ## マイルストーン 0.4.4
 
 * `inspect --tile --summary` の Tile Summary に **タイルサイズ** を追加
@@ -577,4 +588,3 @@ v0.0.1 では以下を **含めない**。
 * sidecar / checkpoint / JSON レポート
 
 ---
-
