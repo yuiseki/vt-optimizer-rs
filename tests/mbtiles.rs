@@ -107,6 +107,7 @@ fn inspect_mbtiles_reports_minimal_stats() {
     );
     assert_eq!(report.empty_tiles, 2);
     assert_eq!(report.empty_ratio, 1.0);
+    assert_eq!(report.over_limit_tiles, 0);
     assert!(!report.sampled);
     assert_eq!(report.sample_total_tiles, 2);
     assert_eq!(report.sample_used_tiles, 2);
@@ -138,6 +139,24 @@ fn inspect_mbtiles_reports_metadata() {
     assert_eq!(report.metadata.get("name"), Some(&"sample".to_string()));
     assert_eq!(report.metadata.get("format"), Some(&"pbf".to_string()));
     assert_eq!(report.metadata.get("minzoom"), Some(&"0".to_string()));
+}
+
+#[test]
+fn inspect_mbtiles_counts_over_limit_tiles() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("input.mbtiles");
+    create_sample_mbtiles(&path);
+
+    let report = inspect_mbtiles_with_options(
+        &path,
+        InspectOptions {
+            max_tile_bytes: 15,
+            ..InspectOptions::default()
+        },
+    )
+    .expect("inspect");
+
+    assert_eq!(report.over_limit_tiles, 1);
 }
 
 #[test]

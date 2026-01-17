@@ -41,6 +41,7 @@ pub struct MbtilesReport {
     pub by_zoom: Vec<MbtilesZoomStats>,
     pub empty_tiles: u64,
     pub empty_ratio: f64,
+    pub over_limit_tiles: u64,
     pub sampled: bool,
     pub sample_total_tiles: u64,
     pub sample_used_tiles: u64,
@@ -1601,6 +1602,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     let mut by_zoom: BTreeMap<u8, MbtilesStats> = BTreeMap::new();
     let mut zoom_minmax: BTreeMap<u8, (u64, u64)> = BTreeMap::new();
     let mut empty_tiles: u64 = 0;
+    let mut over_limit_tiles: u64 = 0;
     let mut processed: u64 = 0;
     let mut used: u64 = 0;
 
@@ -1648,6 +1650,10 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         }
 
         processed += 1;
+
+        if options.max_tile_bytes > 0 && length > options.max_tile_bytes {
+            over_limit_tiles += 1;
+        }
 
         if include_sample(processed, total_tiles, options.sample.as_ref()) {
             used += 1;
@@ -1945,6 +1951,7 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         by_zoom,
         empty_tiles,
         empty_ratio,
+        over_limit_tiles,
         sampled: options.sample.is_some(),
         sample_total_tiles: total_tiles,
         sample_used_tiles: used,

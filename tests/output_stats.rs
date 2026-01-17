@@ -24,6 +24,7 @@ fn apply_stats_filter_removes_unlisted_sections() {
         by_zoom: vec![],
         empty_tiles: 1,
         empty_ratio: 1.0,
+        over_limit_tiles: 0,
         sampled: true,
         sample_total_tiles: 10,
         sample_used_tiles: 1,

@@ -445,6 +445,12 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                     "{}",
                     format_summary_label("Max tile size", format_bytes(report.overall.max_bytes))
                 );
+                if args.max_tile_bytes > 0 {
+                    println!(
+                        "{}",
+                        format_summary_label("Tiles over limit", report.over_limit_tiles)
+                    );
+                }
                 println!(
                     "{}",
                     format_summary_label(

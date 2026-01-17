@@ -37,6 +37,7 @@ fn tile_info_format_compact_clears_property_keys() {
         by_zoom: vec![],
         empty_tiles: 0,
         empty_ratio: 0.0,
+        over_limit_tiles: 0,
         sampled: false,
         sample_total_tiles: 0,
         sample_used_tiles: 0,

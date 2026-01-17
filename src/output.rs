@@ -136,6 +136,7 @@ pub fn apply_stats_filter(mut report: MbtilesReport, filter: &StatsFilter) -> Mb
         report.overall.avg_bytes = 0;
         report.empty_tiles = 0;
         report.empty_ratio = 0.0;
+        report.over_limit_tiles = 0;
         report.sampled = false;
         report.sample_total_tiles = 0;
         report.sample_used_tiles = 0;
@@ -185,6 +186,7 @@ pub fn ndjson_lines(report: &MbtilesReport, mut options: NdjsonOptions) -> Resul
             "by_zoom": report.by_zoom,
             "empty_tiles": report.empty_tiles,
             "empty_ratio": report.empty_ratio,
+            "over_limit_tiles": report.over_limit_tiles,
             "sampled": report.sampled,
             "sample_total_tiles": report.sample_total_tiles,
             "sample_used_tiles": report.sample_used_tiles,
