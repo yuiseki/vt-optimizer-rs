@@ -667,7 +667,7 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
 * 全体:
 
   * tile count
-  * total bytes / mean / p50 / p95 / max
+  * total bytes / mean / max
   * `max-tile-bytes` 超過タイル数（厳密カウント）
 * zoom 別:
 
