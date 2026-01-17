@@ -22,8 +22,11 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 
 ## [0.4.6] - 2026-01-17
 ### Added
-- Add `--unknown-filter` mode to control handling of unsupported style expressions during optimize.
 - Count tiles over `--max-tile-bytes` in inspect outputs for MBTiles/PMTiles.
+
+## [0.4.5] - 2026-01-17
+### Added
+- Add `--unknown-filter` mode to control handling of unsupported style expressions during optimize.
 
 ### Changed
 - Remove unsupported `--style-mode none` option.
