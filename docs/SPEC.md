@@ -10,7 +10,7 @@
 vt-optimizer-rs は、**Mapbox Vector Tiles (MVT)** を格納した **MBTiles / PMTiles** を対象に、以下を行うツールチェイン（CLI/SDK）です。
 
 1. **検査 (inspect)**: タイルサイズ・分布・レイヤー/フィーチャー統計を可観測化
-2. **最適化 (prune)**: Style（Mapbox/MapLibre）解釈に基づき、**不要レイヤー削除 + filter 解釈による feature 単位削除**
+2. **最適化 (optimize)**: Style（Mapbox/MapLibre）解釈に基づき、**不要レイヤー削除 + filter 解釈による feature 単位削除**
 3. **簡略化 (simplify)**: 指定条件でジオメトリ頂点を減らし、サイズ/描画負荷を抑制
 
 本プロジェクトは **planet 規模の MBTiles** を前提とし、**読み取り並列 + 単一 writer 集約**のストリーミング処理を基本路線とします。SQLite の WAL モードは「readers が writer をブロックしにくい」性質があり、並列読み取りと単一書き込みの設計と相性が良い、という立場を取ります。
@@ -246,7 +246,7 @@ v0.0.4 では以下を **含めない**。
 
 ## 1.23 マイルストーン（v0.0.21）
 
-* inspect text にファイル全体の layer list を追加（name / features / property key 数 / extent / version）
+* inspect text にファイル全体の layer list を追加（name / features / property key 数）
 
 ---
 
@@ -386,7 +386,7 @@ v0.0.4 では以下を **含めない**。
 * filter の結合ルールを明確化
   * 同一 source-layer 複数 style layer は OR で keep
   * `layout.visibility: "none"` は常に drop
-  * paint が非表示なら filter を飛ばして drop
+  * paint が非表示なら filter を飛ばして drop（常時）
 
 ---
 
@@ -439,8 +439,8 @@ v0.0.4 では以下を **含めない**。
 
 ## 1.49 マイルストーン（v0.0.47）
 
-* optimize の PMTiles 入出力対応
-  * PMTiles を直接 prune して出力可能
+* optimize の PMTiles 入出力対応（同一フォーマットのみ）
+  * PMTiles を直接 optimize して PMTiles に出力可能
 
 ---
 
@@ -500,7 +500,7 @@ v0.0.4 では以下を **含めない**。
 ## 1.57 マイルストーン（v0.0.55）
 
 * vt-optimizer 互換モード（filter 無視）を追加
-  * `--style-mode vt-compat` で可視 layer のみを判定
+  * `--style-mode vt-compat` は `layer` と同義で可視 layer のみを判定
 
 ---
 
@@ -597,7 +597,7 @@ v0.0.4 では以下を **含めない**。
 
 * `.mvt` / `.pbf` は Protocol Buffers ベース。
 * extent 4096 は事実上の標準として扱い、互換性を優先する。
-* gzip 圧縮については “auto” を基本（vt-optimizer 互換）。解凍に失敗した場合は raw PBF として扱う設定も持てる。
+* gzip 圧縮については “auto” を基本（vt-optimizer 互換）。
 
 ---
 
@@ -618,19 +618,21 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
 `<command>`:
 
 * `inspect` : 統計・分布・サンプリング
-* `prune`   : style ベース最適化（レイヤー削除 + feature 削除）
+* `optimize`: style ベース最適化（レイヤー削除 + feature 削除）
 * `simplify`: ジオメトリ簡略化
 * `copy`    : 変換のみ（MBTiles⇄PMTiles、再圧縮/正規化含む、任意）
 
 互換 CLI の挙動:
 
 * `-m` のみ: `inspect` と同等（text）
-* `-m -s` / `-m -s -o`: `prune` 相当（style-mode=vt-compat）
-* `-m -z -x -y` (+ `-l` / `-t`): `simplify` 相当として受理
+* `-m -s` / `-m -s -o`: `optimize` 相当（style-mode=vt-compat）
+* `-m -z -x -y` のみ: `inspect` の tile info 相当
+* `-m -z -x -y -t <tolerance>`: `simplify` 相当（`-l/--layer` 必須）
 
 注記:
 
-* `-z/-x/-y/-l/-t` の simplify 相当は CLI で受理し、実処理への接続は段階的に実装する（仕様としては保持）。
+* `-t` 指定時に simplify に分岐する（本家 vt-optimizer と同等）。
+* `-l/--layer` 未指定で `-t` を与えた場合はエラー（本家 vt-optimizer と同等）。
 
 ### 4.2 入出力フォーマット推定（ffmpeg 的挙動）
 
@@ -650,7 +652,7 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
 * `--io-batch <n>`: 読み取り/処理キューの上限（タイル件数）
 * `--read-cache-mb <mb>`: 読み取り側 SQLite cache サイズ（MB）
 * `--write-cache-mb <mb>`: 書き込み側 SQLite cache サイズ（MB）
-* `--drop-empty-tiles`: prune 後に空タイルを出力しない（サイズ削減優先）
+* `--drop-empty-tiles`: optimize 後に空タイルを出力しない（サイズ削減優先）
 * `--checkpoint <path>`: sidecar 状態ファイル（JSON/SQLite）
 * `--resume`: checkpoint があれば再開
 * `--log <level>`: `error|warn|info|debug|trace`
@@ -658,7 +660,7 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
 
 ### 4.4 inspect
 
-目的：ボトルネックとなる zoom/領域/レイヤーを特定し、prune/simplify の入力設計に資する。
+目的：ボトルネックとなる zoom/領域/レイヤーを特定し、optimize/simplify の入力設計に資する。
 
 出力（最低限）：
 
@@ -666,7 +668,7 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
 
   * tile count
   * total bytes / mean / p50 / p95 / max
-  * `max-tile-bytes` 超過数
+  * `max-tile-bytes` 超過タイル数（厳密カウント）
 * zoom 別:
 
   * 同様の統計
@@ -675,10 +677,10 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
   * `--histogram-buckets 10`（デフォルト 10）
   * `--topn <k>`: 最大タイル（サイズ）上位 k 件（z/x/y、bytes、layer count 等）
 
-### 4.5 prune
+### 4.5 optimize
 
 入力：tileset + style JSON（任意）
-出力：tileset（同一または変換）
+出力：tileset（入力と同一フォーマットのみ）
 
 主要仕様：
 
@@ -694,8 +696,8 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
 
 style 解釈はユーザーが選べる：
 
-* `--style-mode none`：style 無視（何も prune しない / ただし再圧縮などは可能）
 * `--style-mode layer`：未使用 layer の削除のみ
+* `--style-mode vt-compat`：`layer` と同義（本家 vt-optimizer 互換。filter は無視）
 * `--style-mode layer+filter`：layer 削除 + filter による feature 削除（既定）
 
 ### 4.6 simplify
@@ -732,13 +734,11 @@ style 解釈はユーザーが選べる：
 タイル zoom = z に対し、style layer を「可視」とみなす条件（MVP）：
 
 * `layout.visibility != "none"`（未指定は visible 扱い）
-* `z >= minzoom` かつ `z < maxzoom`（未指定は 0/24 扱い）
+* `z >= minzoom` かつ `z < maxzoom`（未指定は上限なし）
 
 拡張（vt-optimizer 互換の方向）：
 
-* paint の opacity 系が常に 0 になる等 “実質不可視” も prune 対象にできるが、初期はオプション扱い：
-
-  * `--visibility paint` を指定した場合に有効化
+* paint の opacity 系が常に 0 になる等 “実質不可視” も prune 対象に含める（常時有効）
 
 ### 5.4 filter による feature 残存判定
 
