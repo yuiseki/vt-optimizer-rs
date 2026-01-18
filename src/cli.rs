@@ -80,7 +80,7 @@ pub struct InspectArgs {
     pub sample: Option<String>,
 
     /// Output format (text/json/ndjson).
-    #[arg(long, value_enum, default_value_t = ReportFormat::Text)]
+    #[arg(long = "report-format", value_enum, default_value_t = ReportFormat::Text)]
     pub output: ReportFormat,
 
     /// Limit output sections (comma-separated). See error output for allowed values.
@@ -143,11 +143,11 @@ pub struct InspectArgs {
     #[arg(long, value_enum, default_value_t = TileSortArg::Size)]
     pub sort: TileSortArg,
 
-    /// NDJSON: omit the summary line (requires --output ndjson).
+    /// NDJSON: omit the summary line (requires --report-format ndjson).
     #[arg(long, default_value_t = false)]
     pub ndjson_lite: bool,
 
-    /// NDJSON: compact payloads and force --output ndjson.
+    /// NDJSON: compact payloads and force --report-format ndjson.
     #[arg(long, default_value_t = false)]
     pub ndjson_compact: bool,
 

@@ -155,7 +155,7 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
 * `--checkpoint <path>`: sidecar 状態ファイル（JSON/SQLite）
 * `--resume`: checkpoint があれば再開
 * `--log <level>`: `error|warn|info|debug|trace`
-* `--output <text|json|ndjson>`: レポート出力形式（stdout）
+* `--report-format <text|json|ndjson>`: レポート出力形式（stdout）
 
 ### 4.4 inspect
 

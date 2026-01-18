@@ -283,7 +283,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     let output = resolve_output_format(args.output, args.ndjson_compact);
     let stats_filter = vt_optimizer::output::parse_stats_filter(args.stats.as_deref())?;
     if args.ndjson_lite && output != ReportFormat::Ndjson {
-        anyhow::bail!("--ndjson-lite requires --output ndjson");
+        anyhow::bail!("--ndjson-lite requires --report-format ndjson");
     }
     let sample = match args.sample.as_deref() {
         Some(value) => Some(parse_sample_spec(value)?),

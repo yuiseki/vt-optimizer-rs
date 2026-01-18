@@ -116,7 +116,7 @@ fn parse_inspect_options() {
         "5",
         "--histogram-buckets",
         "12",
-        "--output",
+        "--report-format",
         "json",
         "--stats",
         "summary,zoom",
@@ -204,7 +204,7 @@ fn parse_inspect_output_ndjson() {
         "vt-optimizer",
         "inspect",
         "input.mbtiles",
-        "--output",
+        "--report-format",
         "ndjson",
     ]);
     match cli.command {
