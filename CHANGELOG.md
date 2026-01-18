@@ -20,6 +20,13 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.4.7] - 2026-01-18
+### Added
+- Add Makefile targets for JSON report output from inspect/optimize.
+
+### Changed
+- Require OUTPUT_MBTILES_PATH and STYLE_PATH for the optimize Makefile target.
+
 ## [0.4.6] - 2026-01-17
 ### Added
 - Count tiles over `--max-tile-bytes` in inspect outputs for MBTiles/PMTiles.
