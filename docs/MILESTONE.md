@@ -442,7 +442,7 @@
 ## マイルストーン 0.0.12
 
 * `--output json` で zoom 別 histogram + tile list + summary を出力
-* 大量 tile 向けに NDJSON を検討
+* 大量 tile 向けに NDJSON を追加
 
 ---
 
