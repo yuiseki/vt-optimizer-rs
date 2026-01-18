@@ -23,7 +23,7 @@ cargo run -- inspect "$MBTILES_PATH" \
 Notes:
 - `--stats summary,layers` keeps the output concise.
 - `--fast` uses sampling to reduce runtime and output volume.
-- For machine-readable output, add `--output ndjson`.
+- For machine-readable output, add `--report-format ndjson`.
 
 ### Inspect workflow and tips
 
@@ -55,7 +55,7 @@ Tips:
 - When `-x/-y` are provided, output focuses on `## Tile Summary` for that tile.
 - If you need a smaller report, use `--stats` to select sections or `--fast`
   to sample.
-- Use `--output ndjson` when you want to script or diff results.
+- Use `--report-format ndjson` when you want to script or diff results.
 
 ## Optimize
 

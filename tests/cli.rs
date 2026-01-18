@@ -12,6 +12,7 @@ fn parse_optimize_minimal() {
             assert_eq!(args.output, None);
             assert_eq!(args.input_format, None);
             assert_eq!(args.output_format, None);
+            assert_eq!(args.report_format, ReportFormat::Text);
             assert_eq!(args.style, None);
             assert_eq!(args.style_mode, StyleMode::LayerFilter);
             assert_eq!(args.unknown_filter, UnknownFilterMode::Keep);
@@ -37,6 +38,8 @@ fn parse_optimize_options() {
         "mbtiles",
         "--output-format",
         "pmtiles",
+        "--report-format",
+        "json",
         "--style",
         "style.json",
         "--style-mode",
@@ -60,6 +63,7 @@ fn parse_optimize_options() {
             assert_eq!(args.output.unwrap().as_os_str(), "out.pmtiles");
             assert_eq!(args.input_format.unwrap(), "mbtiles");
             assert_eq!(args.output_format.unwrap(), "pmtiles");
+            assert_eq!(args.report_format, ReportFormat::Json);
             assert_eq!(args.style.unwrap().as_os_str(), "style.json");
             assert_eq!(args.style_mode, StyleMode::LayerFilter);
             assert_eq!(args.unknown_filter, UnknownFilterMode::Drop);
@@ -116,7 +120,7 @@ fn parse_inspect_options() {
         "5",
         "--histogram-buckets",
         "12",
-        "--output",
+        "--report-format",
         "json",
         "--stats",
         "summary,zoom",
@@ -204,7 +208,7 @@ fn parse_inspect_output_ndjson() {
         "vt-optimizer",
         "inspect",
         "input.mbtiles",
-        "--output",
+        "--report-format",
         "ndjson",
     ]);
     match cli.command {

@@ -73,18 +73,48 @@ inspect-mbtiles: ## Inspect MBTiles file (requires MBTILES_PATH in .env)
 	fi
 	cargo run -- inspect $(MBTILES_PATH)
 
-inspect-pmtiles: ## Inspect PMTiles file (requires PMTILES_PATH in .env)
-	@if [ -z "$(PMTILES_PATH)" ]; then \
-		echo "Error: PMTILES_PATH is not set. Please set it in .env file"; \
+inspect-mbtiles-json: ## Inspect MBTiles file and output JSON (requires MBTILES_PATH in .env)
+	@if [ -z "$(MBTILES_PATH)" ]; then \
+		echo "Error: MBTILES_PATH is not set. Please set it in .env file"; \
 		exit 1; \
 	fi
-	cargo run -- inspect $(PMTILES_PATH)
+	cargo run -- inspect $(MBTILES_PATH) --report-format json
 
 optimize-mbtiles: ## Optimize MBTiles file (requires MBTILES_PATH in .env)
 	@if [ -z "$(MBTILES_PATH)" ]; then \
 		echo "Error: MBTILES_PATH is not set. Please set it in .env file"; \
 		exit 1; \
 	fi
+	@if [ -z "$(OUTPUT_MBTILES_PATH)" ]; then \
+		echo "Error: OUTPUT_MBTILES_PATH is not set. Please set it in .env file"; \
+		exit 1; \
+	fi
+	@if [ -z "$(STYLE_PATH)" ]; then \
+		echo "Error: STYLE_PATH is not set. Please set it in .env file"; \
+		exit 1; \
+	fi
 	cargo run -- optimize $(MBTILES_PATH) --style $(STYLE_PATH) --output $(OUTPUT_MBTILES_PATH)
+
+optimize-mbtiles-json: ## Optimize MBTiles file and output JSON report (requires MBTILES_PATH in .env)
+	@if [ -z "$(MBTILES_PATH)" ]; then \
+		echo "Error: MBTILES_PATH is not set. Please set it in .env file"; \
+		exit 1; \
+	fi
+	@if [ -z "$(OUTPUT_MBTILES_PATH)" ]; then \
+		echo "Error: OUTPUT_MBTILES_PATH is not set. Please set it in .env file"; \
+		exit 1; \
+	fi
+	@if [ -z "$(STYLE_PATH)" ]; then \
+		echo "Error: STYLE_PATH is not set. Please set it in .env file"; \
+		exit 1; \
+	fi
+	cargo run -- optimize $(MBTILES_PATH) --style $(STYLE_PATH) --output $(OUTPUT_MBTILES_PATH) --report-format json
+
+inspect-pmtiles: ## Inspect PMTiles file (requires PMTILES_PATH in .env)
+	@if [ -z "$(PMTILES_PATH)" ]; then \
+		echo "Error: PMTILES_PATH is not set. Please set it in .env file"; \
+		exit 1; \
+	fi
+	cargo run -- inspect $(PMTILES_PATH)
 
 .DEFAULT_GOAL := help

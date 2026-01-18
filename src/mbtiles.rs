@@ -2222,7 +2222,7 @@ pub fn copy_mbtiles(input: &Path, output: &Path) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize)]
 pub struct PruneStats {
     pub removed_features_by_zoom: BTreeMap<u8, u64>,
     pub removed_layers_by_zoom: BTreeMap<String, BTreeSet<u8>>,

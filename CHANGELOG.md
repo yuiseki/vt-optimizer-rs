@@ -20,6 +20,18 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
 
+## [0.4.7] - 2026-01-18
+### Added
+- Add `--report-format` JSON/NDJSON output for optimize.
+- Add Makefile targets for JSON report output from inspect/optimize.
+
+### Changed
+- Switch inspect output flag to `--report-format`.
+- Require OUTPUT_MBTILES_PATH and STYLE_PATH for the optimize Makefile target.
+- Move milestone history from SPEC into `docs/MILESTONE.md`.
+- Drop p50/p95 from inspect stats in SPEC (not present in upstream vt-optimizer).
+- Note future work for WAL disable option in compat mode and PMTiles v2 reads in SPEC.
+
 ## [0.4.6] - 2026-01-17
 ### Added
 - Count tiles over `--max-tile-bytes` in inspect outputs for MBTiles/PMTiles.

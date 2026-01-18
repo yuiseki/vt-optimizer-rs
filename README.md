@@ -54,8 +54,11 @@ vt-optimizer inspect /path/to/tiles.mbtiles
 # PMTiles
 vt-optimizer inspect /path/to/tiles.pmtiles
 
+# JSON output
+vt-optimizer inspect /path/to/tiles.mbtiles --report-format json
+
 # NDJSON output
-vt-optimizer inspect /path/to/tiles.mbtiles --output ndjson
+vt-optimizer inspect /path/to/tiles.mbtiles --report-format ndjson
 ```
 
 ### Optimize

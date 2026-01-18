@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use nu_ansi_term::{Color, Style};
+use serde::Serialize;
 use vt_optimizer::cli::{Cli, Command, ReportFormat, TileSortArg};
 use vt_optimizer::format::{plan_copy, plan_optimize, resolve_output_path};
 use vt_optimizer::mbtiles::{
@@ -133,6 +134,7 @@ fn main() -> Result<()> {
                     output: cli.output.clone(),
                     input_format: None,
                     output_format: None,
+                    report_format: ReportFormat::Text,
                     style: cli.style.clone(),
                     style_mode: vt_optimizer::cli::StyleMode::VtCompat,
                     unknown_filter: vt_optimizer::cli::UnknownFilterMode::Keep,
@@ -283,7 +285,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
     let output = resolve_output_format(args.output, args.ndjson_compact);
     let stats_filter = vt_optimizer::output::parse_stats_filter(args.stats.as_deref())?;
     if args.ndjson_lite && output != ReportFormat::Ndjson {
-        anyhow::bail!("--ndjson-lite requires --output ndjson");
+        anyhow::bail!("--ndjson-lite requires --report-format ndjson");
     }
     let sample = match args.sample.as_deref() {
         Some(value) => Some(parse_sample_spec(value)?),
@@ -698,6 +700,8 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
 }
 
 fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
+    let report_format = args.report_format;
+    let emit_logs = report_format == ReportFormat::Text;
     let decision = plan_optimize(
         &args.input,
         args.output.as_deref(),
@@ -715,10 +719,12 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
     {
         anyhow::bail!("v0.0.55 only supports --style-mode layer, layer+filter, or vt-compat");
     }
-    println!("Prune steps");
-    println!("- Parsing style file");
+    if emit_logs {
+        println!("Prune steps");
+        println!("- Parsing style file");
+    }
     let style = read_style(style_path)?;
-    match (decision.input, decision.output) {
+    let stats = match (decision.input, decision.output) {
         (vt_optimizer::format::TileFormat::Mbtiles, vt_optimizer::format::TileFormat::Mbtiles) => {
             let apply_filters = args.style_mode == vt_optimizer::cli::StyleMode::LayerFilter;
             let threads = args.threads.unwrap_or_else(|| {
@@ -727,10 +733,12 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
                     .unwrap_or(1)
             });
             let readers = args.readers.unwrap_or(threads);
-            println!(
-                "- Processing tiles (threads={threads}, readers={readers}, io_batch={})",
-                args.io_batch,
-            );
+            if emit_logs {
+                println!(
+                    "- Processing tiles (threads={threads}, readers={readers}, io_batch={})",
+                    args.io_batch,
+                );
+            }
             let stats = prune_mbtiles_layer_only(
                 &args.input,
                 &output_path,
@@ -747,12 +755,17 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
                         == vt_optimizer::cli::UnknownFilterMode::Keep,
                 },
             )?;
-            println!("- Writing output file to {}", output_path.display());
-            print_prune_summary(&stats);
+            if emit_logs {
+                println!("- Writing output file to {}", output_path.display());
+                print_prune_summary(&stats);
+            }
+            stats
         }
         (vt_optimizer::format::TileFormat::Pmtiles, vt_optimizer::format::TileFormat::Pmtiles) => {
             let apply_filters = args.style_mode == vt_optimizer::cli::StyleMode::LayerFilter;
-            println!("- Processing tiles");
+            if emit_logs {
+                println!("- Processing tiles");
+            }
             let stats = prune_pmtiles_layer_only(
                 &args.input,
                 &output_path,
@@ -760,19 +773,46 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
                 apply_filters,
                 args.unknown_filter == vt_optimizer::cli::UnknownFilterMode::Keep,
             )?;
-            println!("- Writing output file to {}", output_path.display());
-            print_prune_summary(&stats);
+            if emit_logs {
+                println!("- Writing output file to {}", output_path.display());
+                print_prune_summary(&stats);
+            }
+            stats
         }
         _ => {
             anyhow::bail!("v0.0.47 only supports matching input/output formats for optimize");
         }
+    };
+    if emit_logs {
+        println!(
+            "optimize: input={} output={}",
+            args.input.display(),
+            output_path.display()
+        );
+    } else {
+        let report = OptimizeReport {
+            input: args.input.display().to_string(),
+            output: output_path.display().to_string(),
+            stats,
+        };
+        match report_format {
+            ReportFormat::Text => {}
+            ReportFormat::Json => {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            }
+            ReportFormat::Ndjson => {
+                println!("{}", serde_json::to_string(&report)?);
+            }
+        }
     }
-    println!(
-        "optimize: input={} output={}",
-        args.input.display(),
-        output_path.display()
-    );
     Ok(())
+}
+
+#[derive(Serialize)]
+struct OptimizeReport {
+    input: String,
+    output: String,
+    stats: PruneStats,
 }
 
 fn emphasize_section_heading(line: &str) -> String {
