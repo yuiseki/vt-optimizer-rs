@@ -151,6 +151,10 @@ pub struct InspectArgs {
     #[arg(long, default_value_t = false)]
     pub ndjson_compact: bool,
 
+    /// Include per-layer stats (expensive; requires reading and decoding tiles).
+    #[arg(long, default_value_t = false)]
+    pub include_layer_list: bool,
+
     /// Tile summary detail level (full or compact).
     #[arg(long, value_enum, default_value_t = TileInfoFormat::Full)]
     pub tile_info_format: TileInfoFormat,
