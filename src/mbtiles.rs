@@ -1619,11 +1619,11 @@ fn supports_rowid(conn: &Connection, table: &str) -> Result<bool> {
 }
 
 fn fetch_zoom_counts(conn: &Connection) -> Result<BTreeMap<u8, u64>> {
-    let source = tiles_source_clause(conn)?;
-    let zoom_col = if source == "tiles" {
-        "zoom_level"
-    } else {
+    let source = tiles_count_source_clause(conn)?;
+    let zoom_col = if source == "map" {
         "map.zoom_level"
+    } else {
+        "zoom_level"
     };
     let query = format!("SELECT {zoom_col}, COUNT(*) FROM {source} GROUP BY {zoom_col}",);
     let mut stmt = conn.prepare(&query).context("prepare zoom counts")?;
@@ -2251,6 +2251,18 @@ fn tiles_source_clause(conn: &Connection) -> Result<&'static str> {
     }
 }
 
+fn tiles_count_source_clause(conn: &Connection) -> Result<&'static str> {
+    if has_table(conn, "tiles_shallow")? {
+        Ok("tiles_shallow")
+    } else if has_table(conn, "tiles")? || has_view(conn, "tiles")? {
+        Ok("tiles")
+    } else if has_table(conn, "map")? && has_table(conn, "images")? {
+        Ok("map")
+    } else {
+        anyhow::bail!("mbtiles missing tiles table or map/images tables")
+    }
+}
+
 fn tiles_data_expr(conn: &Connection) -> Result<&'static str> {
     if has_table(conn, "tiles")? || has_view(conn, "tiles")? {
         Ok("tile_data")
@@ -2304,11 +2316,11 @@ fn select_zoom_length_by_zoom_query(conn: &Connection) -> Result<String> {
 }
 
 fn select_tile_count_query(conn: &Connection, with_zoom: bool) -> Result<String> {
-    let source = tiles_source_clause(conn)?;
-    let zoom_col = if source == "tiles" {
-        "zoom_level"
-    } else {
+    let source = tiles_count_source_clause(conn)?;
+    let zoom_col = if source == "map" {
         "map.zoom_level"
+    } else {
+        "zoom_level"
     };
     if with_zoom {
         Ok(format!(
