@@ -1227,7 +1227,13 @@ fn build_histogram(
     };
     let range = (max_len - min_len).max(1);
     let bucket_size = ((range as f64) / buckets as f64).ceil() as u64;
+    let tile_source = tiles_source_clause(&conn)?;
+    let allow_column_chunk = sample.is_none() && tile_source == "tiles";
+    let chunk_count = (rayon::current_num_threads() as u64)
+        .saturating_mul(4)
+        .max(1);
     let query = select_zoom_length_by_zoom_query(&conn)?;
+    let query_with_column_range = select_zoom_length_by_zoom_and_column_range_query(&conn)?;
     let zoom_counts = fetch_zoom_counts(&conn)?;
     let zooms = if let Some(target) = zoom {
         vec![target]
@@ -1237,13 +1243,38 @@ fn build_histogram(
     let processed = Arc::new(AtomicU64::new(0));
     let progress = progress.clone();
 
-    let (counts, bytes) = zooms
+    let mut tasks = Vec::new();
+    for zoom in &zooms {
+        if allow_column_chunk && *zoom >= 12 {
+            if let Some(ranges) = tile_column_chunks(*zoom, chunk_count) {
+                for range in ranges {
+                    tasks.push((*zoom, Some(range)));
+                }
+            } else {
+                tasks.push((*zoom, None));
+            }
+        } else {
+            tasks.push((*zoom, None));
+        }
+    }
+
+    let (counts, bytes) = tasks
         .into_par_iter()
-        .map(|zoom| -> Result<(Vec<u64>, Vec<u64>)> {
+        .map(|(zoom, range)| -> Result<(Vec<u64>, Vec<u64>)> {
             let conn = open_readonly_mbtiles(path)?;
             apply_read_pragmas(&conn)?;
-            let mut stmt = conn.prepare(&query).context("prepare histogram scan")?;
-            let mut rows = stmt.query([zoom]).context("query histogram scan")?;
+            let mut stmt = if range.is_some() {
+                conn.prepare(&query_with_column_range)
+                    .context("prepare histogram scan (column range)")?
+            } else {
+                conn.prepare(&query).context("prepare histogram scan")?
+            };
+            let mut rows = if let Some((col_min, col_max)) = range {
+                stmt.query(params![zoom, col_min, col_max])
+                    .context("query histogram scan (column range)")?
+            } else {
+                stmt.query([zoom]).context("query histogram scan")?
+            };
 
             let total_tiles_db = *zoom_counts.get(&zoom).unwrap_or(&0);
             let mut index: u64 = 0;
@@ -1384,7 +1415,13 @@ fn build_zoom_histograms(
         bar.set_message("building zoom histograms");
         bar
     };
+    let tile_source = tiles_source_clause(&conn)?;
+    let allow_column_chunk = sample.is_none() && tile_source == "tiles";
+    let chunk_count = (rayon::current_num_threads() as u64)
+        .saturating_mul(4)
+        .max(1);
     let query = select_zoom_length_by_zoom_query(&conn)?;
+    let query_with_column_range = select_zoom_length_by_zoom_and_column_range_query(&conn)?;
 
     #[derive(Clone, Copy)]
     struct ZoomConfig {
@@ -1418,18 +1455,41 @@ fn build_zoom_histograms(
     }
 
     let zooms = configs.keys().copied().collect::<Vec<_>>();
+    let mut tasks = Vec::new();
+    for zoom in &zooms {
+        if allow_column_chunk && *zoom >= 12 {
+            if let Some(ranges) = tile_column_chunks(*zoom, chunk_count) {
+                for range in ranges {
+                    tasks.push((*zoom, Some(range)));
+                }
+            } else {
+                tasks.push((*zoom, None));
+            }
+        } else {
+            tasks.push((*zoom, None));
+        }
+    }
     let processed = Arc::new(AtomicU64::new(0));
     let progress = progress.clone();
 
-    let accums = zooms
+    let accums = tasks
         .into_par_iter()
-        .map(|zoom| -> Result<BTreeMap<u8, ZoomAccum>> {
+        .map(|(zoom, range)| -> Result<(u8, ZoomAccum)> {
             let conn = open_readonly_mbtiles(path)?;
             apply_read_pragmas(&conn)?;
-            let mut stmt = conn
-                .prepare(&query)
-                .context("prepare zoom histogram scan")?;
-            let mut rows = stmt.query([zoom]).context("query zoom histogram scan")?;
+            let mut stmt = if range.is_some() {
+                conn.prepare(&query_with_column_range)
+                    .context("prepare zoom histogram scan (column range)")?
+            } else {
+                conn.prepare(&query)
+                    .context("prepare zoom histogram scan")?
+            };
+            let mut rows = if let Some((col_min, col_max)) = range {
+                stmt.query(params![zoom, col_min, col_max])
+                    .context("query zoom histogram scan (column range)")?
+            } else {
+                stmt.query([zoom]).context("query zoom histogram scan")?
+            };
 
             let config = configs.get(&zoom).expect("zoom histogram config missing");
             let mut accum = ZoomAccum {
@@ -1481,17 +1541,49 @@ fn build_zoom_histograms(
                 progress.set_position(total);
             }
 
-            let mut map = BTreeMap::new();
-            map.insert(zoom, accum);
-            Ok(map)
+            Ok((zoom, accum))
         })
-        .reduce(
-            || Ok(BTreeMap::new()),
-            |left, right| -> Result<BTreeMap<u8, ZoomAccum>> {
-                let mut left = left?;
-                let right = right?;
+        .try_fold(
+            BTreeMap::new,
+            |mut map, item| -> Result<BTreeMap<u8, ZoomAccum>> {
+                let (zoom, accum) = item?;
+                let entry = map.entry(zoom).or_insert_with(|| ZoomAccum {
+                    min_len: accum.min_len,
+                    max_len: accum.max_len,
+                    bucket_size: accum.bucket_size,
+                    counts: vec![0u64; buckets],
+                    bytes: vec![0u64; buckets],
+                    used_tiles: 0,
+                    used_bytes: 0,
+                });
+                for i in 0..buckets {
+                    entry.counts[i] += accum.counts[i];
+                    entry.bytes[i] += accum.bytes[i];
+                }
+                entry.used_tiles += accum.used_tiles;
+                entry.used_bytes += accum.used_bytes;
+                Ok(map)
+            },
+        )
+        .try_reduce(
+            BTreeMap::new,
+            |mut left, right| -> Result<BTreeMap<u8, ZoomAccum>> {
                 for (zoom, accum) in right {
-                    left.insert(zoom, accum);
+                    let entry = left.entry(zoom).or_insert_with(|| ZoomAccum {
+                        min_len: accum.min_len,
+                        max_len: accum.max_len,
+                        bucket_size: accum.bucket_size,
+                        counts: vec![0u64; buckets],
+                        bytes: vec![0u64; buckets],
+                        used_tiles: 0,
+                        used_bytes: 0,
+                    });
+                    for i in 0..buckets {
+                        entry.counts[i] += accum.counts[i];
+                        entry.bytes[i] += accum.bytes[i];
+                    }
+                    entry.used_tiles += accum.used_tiles;
+                    entry.used_bytes += accum.used_bytes;
                 }
                 Ok(left)
             },
@@ -2593,6 +2685,19 @@ fn select_zoom_length_by_zoom_query(conn: &Connection) -> Result<String> {
     };
     Ok(format!(
         "SELECT LENGTH({data_expr}) FROM {source} WHERE {zoom_col} = ?1",
+    ))
+}
+
+fn select_zoom_length_by_zoom_and_column_range_query(conn: &Connection) -> Result<String> {
+    let source = tiles_source_clause(conn)?;
+    let data_expr = tiles_data_expr(conn)?;
+    let (zoom_col, x_col) = if source == "tiles" {
+        ("zoom_level", "tile_column")
+    } else {
+        ("map.zoom_level", "map.tile_column")
+    };
+    Ok(format!(
+        "SELECT LENGTH({data_expr}) FROM {source} WHERE {zoom_col} = ?1 AND {x_col} BETWEEN ?2 AND ?3",
     ))
 }
 
