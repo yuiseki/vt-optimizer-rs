@@ -176,6 +176,7 @@ vt-optimizer -m <mbtiles> [-s <style.json>] [-o <output>] [-z <z> -x <x> -y <y> 
   * `--histogram-buckets 10`（デフォルト 10）
   * `--topn <k>`: 最大タイル（サイズ）上位 k 件（z/x/y、bytes、layer count 等）
   * `--sample <count|ratio>`: サンプリングは **ズームごと**に適用する
+  * `--include-layer-list`: レイヤー統計を出力する（明示指定がない場合は省略）
 
 ### 4.5 optimize
 

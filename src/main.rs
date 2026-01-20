@@ -237,6 +237,7 @@ fn main() -> Result<()> {
                     sort: vt_optimizer::cli::TileSortArg::Size,
                     ndjson_lite: false,
                     ndjson_compact: false,
+                    include_layer_list: false,
                     tile_info_format: vt_optimizer::cli::TileInfoFormat::Full,
                 };
                 run_inspect(args)?;
@@ -266,6 +267,7 @@ fn main() -> Result<()> {
                 sort: vt_optimizer::cli::TileSortArg::Size,
                 ndjson_lite: false,
                 ndjson_compact: false,
+                include_layer_list: false,
                 tile_info_format: vt_optimizer::cli::TileInfoFormat::Full,
             };
             run_inspect(args)?;
@@ -350,9 +352,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
         summary,
         layers,
         recommend: args.recommend,
-        include_layer_list: output == ReportFormat::Text
-            && (stats_filter.includes(vt_optimizer::output::StatsSection::Layers)
-                || stats_filter.includes(vt_optimizer::output::StatsSection::Summary)),
+        include_layer_list: args.include_layer_list,
         list_tiles: if args.list_tiles {
             Some(TileListOptions {
                 limit: args.limit,
@@ -376,7 +376,9 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
         }
     };
     let report = vt_optimizer::output::apply_tile_info_format(report, args.tile_info_format);
-    let summary_totals = if stats_filter.includes(vt_optimizer::output::StatsSection::Summary) {
+    let summary_totals = if args.include_layer_list
+        && stats_filter.includes(vt_optimizer::output::StatsSection::Summary)
+    {
         vt_optimizer::output::summarize_file_layers(&report.file_layers)
     } else {
         None
@@ -411,8 +413,12 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 stats_filter.includes(vt_optimizer::output::StatsSection::Histogram);
             let include_histogram_by_zoom = args.stats.is_some()
                 && stats_filter.includes(vt_optimizer::output::StatsSection::HistogramByZoom);
-            let include_layers = stats_filter.includes(vt_optimizer::output::StatsSection::Layers);
             let hide_tile_summary_sections = args.x.is_some() && args.y.is_some();
+            let include_layers = args.include_layer_list
+                && stats_filter.includes(vt_optimizer::output::StatsSection::Layers);
+            let show_layers_tip = !args.include_layer_list
+                && stats_filter.includes(vt_optimizer::output::StatsSection::Layers)
+                && !hide_tile_summary_sections;
             let include_recommendations =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Recommendations);
             let include_bucket = stats_filter.includes(vt_optimizer::output::StatsSection::Bucket);
@@ -501,6 +507,10 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                         "{}",
                         format_summary_label("Values in this tile", totals.property_value_count)
                     );
+                }
+                if show_layers_tip {
+                    println!();
+                    println!("Tip: use --include-layer-list to include layer statistics.");
                 }
             }
             if include_zoom && !report.by_zoom.is_empty() {
@@ -602,6 +612,10 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                         pad_left(&layer.property_value_count.to_string(), values_width),
                     );
                 }
+            }
+            if show_layers_tip && !include_summary {
+                println!();
+                println!("Tip: use --include-layer-list to include layer statistics.");
             }
             if include_recommendations && !report.recommended_buckets.is_empty() {
                 println!();
