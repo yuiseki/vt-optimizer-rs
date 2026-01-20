@@ -14,8 +14,8 @@ zoom histogram steps. Some MBTiles variants use a shallow schema:
 - `tiles` view joins `tiles_shallow` and `tiles_data`
 
 Because `tiles_shallow` is WITHOUT ROWID, parallel scans cannot be split by
-rowid ranges. The safe key to split work is `zoom_level`, which is indexed as
-part of the primary key.
+rowid ranges. The safe keys to split work are `zoom_level` and the leading
+primary-key columns (notably `tile_column`), which can be queried by range.
 
 ## Decision
 
@@ -27,6 +27,15 @@ connections. Each worker executes:
 Workers aggregate per-zoom counts/bytes in memory and reduce the results into
 final histogram structures. This uses Rayon for CPU parallelism while allowing
 SQLite to perform I/O from multiple readers.
+
+For large zooms, split further by `tile_column` range:
+
+- For `zoom_level >= 12`, split the full `tile_column` range into
+  `num_threads * 4` chunks.
+- Each chunk uses `tile_column BETWEEN ? AND ?` to keep SQLite on the primary
+  key index.
+- Chunking is applied only to the processing scan (to avoid overhead on small
+  zooms) and is skipped when sampling is enabled to preserve sampling order.
 
 For `inspect` processing, use a two-pass strategy:
 
@@ -47,8 +56,10 @@ Sampling is applied per zoom level:
 - CPU utilization increases during histogram building on multi-core systems.
 - Memory use stays bounded by per-zoom bucket accumulators (no full tile list).
 - Sampling semantics change to be zoom-scoped for inspect results.
+- Optimal SQLite connection count for chunked scans remains workload-dependent.
 
 ## Notes
 
 This approach avoids rowid-based chunking and works with both `tiles` tables
-and `map/images` schemas because the zoom column is present in both.
+and `map/images` schemas because the zoom column is present in both. The
+tile-column chunking path only applies to `tiles`/`tiles_shallow` schemas.

@@ -1771,6 +1771,11 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     } else {
         fetch_zoom_counts(&conn)?
     };
+    let tile_source = tiles_source_clause(&conn)?;
+    let allow_column_chunk = options.sample.is_none() && tile_source == "tiles";
+    let chunk_count = (rayon::current_num_threads() as u64)
+        .saturating_mul(4)
+        .max(1);
     let zooms = if let Some(target) = options.zoom {
         if zoom_counts_for_scan.get(&target).copied().unwrap_or(0) > 0 {
             vec![target]
@@ -1796,16 +1801,43 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
     // When sampling and need layer list, fetch tile_data too for layer extraction
     let need_tile_data = collect_layers;
     let query = select_tiles_query_by_zoom(&conn, need_tile_data)?;
+    let query_with_column_range =
+        select_tiles_query_by_zoom_and_column_range(&conn, need_tile_data)?;
     let processed = Arc::new(AtomicU64::new(0));
     let progress = progress.clone();
 
-    let pass1 = zooms
+    let mut pass1_tasks = Vec::new();
+    for zoom in &zooms {
+        if allow_column_chunk && *zoom >= 12 {
+            if let Some(ranges) = tile_column_chunks(*zoom, chunk_count) {
+                for range in ranges {
+                    pass1_tasks.push((*zoom, Some(range)));
+                }
+            } else {
+                pass1_tasks.push((*zoom, None));
+            }
+        } else {
+            pass1_tasks.push((*zoom, None));
+        }
+    }
+
+    let pass1 = pass1_tasks
         .into_par_iter()
-        .map(|zoom| -> Result<Pass1Accum> {
+        .map(|(zoom, range)| -> Result<Pass1Accum> {
             let conn = open_readonly_mbtiles(path)?;
             apply_read_pragmas(&conn)?;
-            let mut stmt = conn.prepare(&query).context("prepare tiles scan")?;
-            let mut rows = stmt.query([zoom]).context("query tiles scan")?;
+            let mut stmt = if range.is_some() {
+                conn.prepare(&query_with_column_range)
+                    .context("prepare tiles scan (column range)")?
+            } else {
+                conn.prepare(&query).context("prepare tiles scan")?
+            };
+            let mut rows = if let Some((col_min, col_max)) = range {
+                stmt.query(params![zoom, col_min, col_max])
+                    .context("query tiles scan (column range)")?
+            } else {
+                stmt.query([zoom]).context("query tiles scan")?
+            };
 
             let total_tiles_db = *zoom_counts_for_scan.get(&zoom).unwrap_or(&0);
             let mut index: u64 = 0;
@@ -1934,7 +1966,70 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         })
         .collect::<Result<Vec<_>>>()?;
 
+    let mut pass1_by_zoom: BTreeMap<u8, Pass1Accum> = BTreeMap::new();
     for accum in pass1 {
+        let entry = pass1_by_zoom
+            .entry(accum.zoom)
+            .or_insert_with(|| Pass1Accum {
+                zoom: accum.zoom,
+                stats: MbtilesStats {
+                    tile_count: 0,
+                    total_bytes: 0,
+                    max_bytes: 0,
+                    avg_bytes: 0,
+                },
+                min_len: None,
+                max_len: None,
+                empty_tiles: 0,
+                over_limit_tiles: 0,
+                top_heap: BinaryHeap::new(),
+                tile_sizes: if should_collect_sizes {
+                    Vec::new()
+                } else {
+                    Vec::with_capacity(0)
+                },
+                layer_accums: BTreeMap::new(),
+                used: 0,
+            });
+
+        entry.used += accum.used;
+        entry.stats.tile_count += accum.stats.tile_count;
+        entry.stats.total_bytes += accum.stats.total_bytes;
+        entry.stats.max_bytes = entry.stats.max_bytes.max(accum.stats.max_bytes);
+        entry.empty_tiles += accum.empty_tiles;
+        entry.over_limit_tiles += accum.over_limit_tiles;
+        if let Some(min) = accum.min_len {
+            entry.min_len = Some(entry.min_len.map_or(min, |v| v.min(min)));
+        }
+        if let Some(max) = accum.max_len {
+            entry.max_len = Some(entry.max_len.map_or(max, |v| v.max(max)));
+        }
+        if should_collect_sizes {
+            entry.tile_sizes.extend(accum.tile_sizes);
+        }
+        if collect_layers {
+            for (name, layer_accum) in accum.layer_accums {
+                let target = entry
+                    .layer_accums
+                    .entry(name)
+                    .or_insert_with(LayerAccum::new);
+                target.feature_count += layer_accum.feature_count;
+                target.vertex_count += layer_accum.vertex_count;
+                target.property_keys.extend(layer_accum.property_keys);
+                target.property_values.extend(layer_accum.property_values);
+            }
+        }
+        if topn > 0 {
+            for Reverse(item) in accum.top_heap {
+                entry.top_heap.push(Reverse(item));
+                if entry.top_heap.len() > topn {
+                    entry.top_heap.pop();
+                }
+            }
+        }
+    }
+
+    for accum in pass1_by_zoom.into_values() {
         let zoom = accum.zoom;
         used += accum.used;
         overall.tile_count += accum.stats.tile_count;
@@ -1984,19 +2079,45 @@ pub fn inspect_mbtiles_with_options(path: &Path, options: InspectOptions) -> Res
         let bucket_target = options.bucket.expect("bucket target");
         let list_options = options.list_tiles.expect("list options");
         let query = select_tiles_query_by_zoom(&conn, false)?;
+        let query_with_column_range = select_tiles_query_by_zoom_and_column_range(&conn, false)?;
         let zooms = if let Some(target) = options.zoom {
             vec![target]
         } else {
             zoom_counts_for_scan.keys().copied().collect::<Vec<_>>()
         };
 
-        let bucket_results = zooms
+        let mut bucket_tasks = Vec::new();
+        for zoom in &zooms {
+            if allow_column_chunk && *zoom >= 12 {
+                if let Some(ranges) = tile_column_chunks(*zoom, chunk_count) {
+                    for range in ranges {
+                        bucket_tasks.push((*zoom, Some(range)));
+                    }
+                } else {
+                    bucket_tasks.push((*zoom, None));
+                }
+            } else {
+                bucket_tasks.push((*zoom, None));
+            }
+        }
+
+        let bucket_results = bucket_tasks
             .into_par_iter()
-            .map(|zoom| -> Result<Vec<TopTile>> {
+            .map(|(zoom, range)| -> Result<Vec<TopTile>> {
                 let conn = open_readonly_mbtiles(path)?;
                 apply_read_pragmas(&conn)?;
-                let mut stmt = conn.prepare(&query).context("prepare bucket scan")?;
-                let mut rows = stmt.query([zoom]).context("query bucket scan")?;
+                let mut stmt = if range.is_some() {
+                    conn.prepare(&query_with_column_range)
+                        .context("prepare bucket scan (column range)")?
+                } else {
+                    conn.prepare(&query).context("prepare bucket scan")?
+                };
+                let mut rows = if let Some((col_min, col_max)) = range {
+                    stmt.query(params![zoom, col_min, col_max])
+                        .context("query bucket scan (column range)")?
+                } else {
+                    stmt.query([zoom]).context("query bucket scan")?
+                };
 
                 let total_tiles_db = *zoom_counts_for_scan.get(&zoom).unwrap_or(&0);
                 let mut index: u64 = 0;
@@ -2398,6 +2519,55 @@ WHERE {zoom_col} = ?1",
         )
     };
     Ok(select)
+}
+
+fn select_tiles_query_by_zoom_and_column_range(
+    conn: &Connection,
+    with_data: bool,
+) -> Result<String> {
+    let source = tiles_source_clause(conn)?;
+    let data_expr = tiles_data_expr(conn)?;
+    let (zoom_col, x_col, y_col) = if source == "tiles" {
+        ("zoom_level", "tile_column", "tile_row")
+    } else {
+        ("map.zoom_level", "map.tile_column", "map.tile_row")
+    };
+    let select = if with_data {
+        format!(
+            "SELECT {zoom_col}, {x_col}, {y_col}, LENGTH({data_expr}), {data_expr} \
+FROM {source} WHERE {zoom_col} = ?1 AND {x_col} BETWEEN ?2 AND ?3",
+        )
+    } else {
+        format!(
+            "SELECT {zoom_col}, {x_col}, {y_col}, LENGTH({data_expr}) FROM {source} \
+WHERE {zoom_col} = ?1 AND {x_col} BETWEEN ?2 AND ?3",
+        )
+    };
+    Ok(select)
+}
+
+fn tile_column_chunks(zoom: u8, chunks: u64) -> Option<Vec<(i64, i64)>> {
+    let cols = 1u64.checked_shl(u32::from(zoom))?;
+    if cols == 0 {
+        return None;
+    }
+    let max_col = cols - 1;
+    if max_col > u64::from(u32::MAX) {
+        return None;
+    }
+    let chunk_count = chunks.max(1);
+    let chunk_size = cols.div_ceil(chunk_count);
+    let mut ranges = Vec::new();
+    let mut start = 0u64;
+    while start <= max_col {
+        let end = (start + chunk_size - 1).min(max_col);
+        ranges.push((start as i64, end as i64));
+        if end == max_col {
+            break;
+        }
+        start = end + 1;
+    }
+    Some(ranges)
 }
 
 fn select_tile_data_query(conn: &Connection) -> Result<String> {
@@ -2890,6 +3060,30 @@ pub fn prune_mbtiles_layer_only(
         );
     }
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::tile_column_chunks;
+
+    #[test]
+    fn tile_column_chunks_small_zoom() {
+        let ranges = tile_column_chunks(2, 4).expect("ranges");
+        assert_eq!(ranges, vec![(0, 0), (1, 1), (2, 2), (3, 3)]);
+    }
+
+    #[test]
+    fn tile_column_chunks_even_splits() {
+        let ranges = tile_column_chunks(12, 8).expect("ranges");
+        assert_eq!(ranges.len(), 8);
+        assert_eq!(ranges.first().copied(), Some((0, 511)));
+        assert_eq!(ranges.last().copied(), Some((3584, 4095)));
+    }
+
+    #[test]
+    fn tile_column_chunks_skips_large_zoom() {
+        assert!(tile_column_chunks(33, 8).is_none());
+    }
 }
 
 fn rowid_ranges(conn: &Connection, table: &str, readers: usize) -> Result<Vec<(i64, i64)>> {
