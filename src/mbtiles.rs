@@ -928,7 +928,7 @@ fn build_file_layer_list(
     }
 
     read_progress.set_position(index);
-    read_progress.finish_and_clear();
+    read_progress.finish();
 
     let processing = if no_progress {
         ProgressBar::hidden()
@@ -988,7 +988,7 @@ fn build_file_layer_list(
             },
         )?;
 
-    processing.finish_and_clear();
+    processing.finish();
 
     let mut result = map
         .into_iter()
