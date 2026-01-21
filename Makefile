@@ -93,6 +93,7 @@ optimize-mbtiles: ## Optimize MBTiles file (requires MBTILES_PATH in .env)
 		echo "Error: STYLE_PATH is not set. Please set it in .env file"; \
 		exit 1; \
 	fi
+	rm -rf $(OUTPUT_MBTILES_PATH)
 	cargo run -- optimize $(MBTILES_PATH) --style $(STYLE_PATH) --output $(OUTPUT_MBTILES_PATH)
 
 optimize-mbtiles-json: ## Optimize MBTiles file and output JSON report (requires MBTILES_PATH in .env)
@@ -108,6 +109,7 @@ optimize-mbtiles-json: ## Optimize MBTiles file and output JSON report (requires
 		echo "Error: STYLE_PATH is not set. Please set it in .env file"; \
 		exit 1; \
 	fi
+	rm -rf $(OUTPUT_MBTILES_PATH)
 	cargo run -- optimize $(MBTILES_PATH) --style $(STYLE_PATH) --output $(OUTPUT_MBTILES_PATH) --report-format json
 
 inspect-pmtiles: ## Inspect PMTiles file (requires PMTILES_PATH in .env)

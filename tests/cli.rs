@@ -143,6 +143,7 @@ fn parse_inspect_options() {
         "zxy",
         "--ndjson-lite",
         "--ndjson-compact",
+        "--include-layer-list",
         "--tile-info-format",
         "compact",
     ]);
@@ -173,6 +174,7 @@ fn parse_inspect_options() {
             assert_eq!(args.sort, vt_optimizer::cli::TileSortArg::Zxy);
             assert!(args.ndjson_lite);
             assert!(args.ndjson_compact);
+            assert!(args.include_layer_list);
             assert_eq!(args.tile_info_format, TileInfoFormat::Compact);
         }
         _ => panic!("expected inspect command"),
@@ -250,5 +252,6 @@ fn inspect_help_describes_fields() {
     assert!(help.contains("Fast defaults"));
     assert!(help.contains("Histogram bucket index"));
     assert!(help.contains("NDJSON"));
+    assert!(help.contains("Include per-layer stats"));
     assert!(help.contains("Tile summary detail level"));
 }

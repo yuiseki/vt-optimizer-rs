@@ -9,16 +9,25 @@ The format is based on Keep a Changelog and adheres to Semantic Versioning.
 ## [Unreleased]
 
 ### Added
-- TBD_UNVT_CHANGELOG_ADDED
+- Add before/after metrics to optimize reports (tile size, file size, features, vertices).
 
 ### Changed
-- TBD_UNVT_CHANGELOG_CHANGED
+- Add colored headings/labels and before/after deltas to optimize text summary.
 
 ### Fixed
 - TBD_UNVT_CHANGELOG_FIXED
 
 ### Security
 - TBD_UNVT_CHANGELOG_SECURITY
+
+## [0.5.0] - 2026-01-20
+
+### Changed
+- Inspect defaults: layer statistics are now opt-in via `--include-layer-list` to avoid expensive scans by default.
+
+### Performance
+- Inspect processing uses tile_column chunking for high zooms (z>=12).
+- Histogram and zoom histogram scans now chunk by tile_column for high zooms (z>=12).
 
 ## [0.4.7] - 2026-01-18
 ### Added

@@ -1,4 +1,4 @@
-use std::thread;
+use std::{collections::BTreeMap, fs, thread};
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -237,6 +237,7 @@ fn main() -> Result<()> {
                     sort: vt_optimizer::cli::TileSortArg::Size,
                     ndjson_lite: false,
                     ndjson_compact: false,
+                    include_layer_list: false,
                     tile_info_format: vt_optimizer::cli::TileInfoFormat::Full,
                 };
                 run_inspect(args)?;
@@ -266,6 +267,7 @@ fn main() -> Result<()> {
                 sort: vt_optimizer::cli::TileSortArg::Size,
                 ndjson_lite: false,
                 ndjson_compact: false,
+                include_layer_list: false,
                 tile_info_format: vt_optimizer::cli::TileInfoFormat::Full,
             };
             run_inspect(args)?;
@@ -350,9 +352,7 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
         summary,
         layers,
         recommend: args.recommend,
-        include_layer_list: output == ReportFormat::Text
-            && (stats_filter.includes(vt_optimizer::output::StatsSection::Layers)
-                || stats_filter.includes(vt_optimizer::output::StatsSection::Summary)),
+        include_layer_list: args.include_layer_list,
         list_tiles: if args.list_tiles {
             Some(TileListOptions {
                 limit: args.limit,
@@ -376,7 +376,9 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
         }
     };
     let report = vt_optimizer::output::apply_tile_info_format(report, args.tile_info_format);
-    let summary_totals = if stats_filter.includes(vt_optimizer::output::StatsSection::Summary) {
+    let summary_totals = if args.include_layer_list
+        && stats_filter.includes(vt_optimizer::output::StatsSection::Summary)
+    {
         vt_optimizer::output::summarize_file_layers(&report.file_layers)
     } else {
         None
@@ -411,8 +413,12 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                 stats_filter.includes(vt_optimizer::output::StatsSection::Histogram);
             let include_histogram_by_zoom = args.stats.is_some()
                 && stats_filter.includes(vt_optimizer::output::StatsSection::HistogramByZoom);
-            let include_layers = stats_filter.includes(vt_optimizer::output::StatsSection::Layers);
             let hide_tile_summary_sections = args.x.is_some() && args.y.is_some();
+            let include_layers = args.include_layer_list
+                && stats_filter.includes(vt_optimizer::output::StatsSection::Layers);
+            let show_layers_tip = !args.include_layer_list
+                && stats_filter.includes(vt_optimizer::output::StatsSection::Layers)
+                && !hide_tile_summary_sections;
             let include_recommendations =
                 stats_filter.includes(vt_optimizer::output::StatsSection::Recommendations);
             let include_bucket = stats_filter.includes(vt_optimizer::output::StatsSection::Bucket);
@@ -501,6 +507,10 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                         "{}",
                         format_summary_label("Values in this tile", totals.property_value_count)
                     );
+                }
+                if show_layers_tip {
+                    println!();
+                    println!("Tip: use --include-layer-list to include layer statistics.");
                 }
             }
             if include_zoom && !report.by_zoom.is_empty() {
@@ -602,6 +612,10 @@ fn run_inspect(args: vt_optimizer::cli::InspectArgs) -> Result<()> {
                         pad_left(&layer.property_value_count.to_string(), values_width),
                     );
                 }
+            }
+            if show_layers_tip && !include_summary {
+                println!();
+                println!("Tip: use --include-layer-list to include layer statistics.");
             }
             if include_recommendations && !report.recommended_buckets.is_empty() {
                 println!();
@@ -719,6 +733,7 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
     {
         anyhow::bail!("v0.0.55 only supports --style-mode layer, layer+filter, or vt-compat");
     }
+    let input_stats = collect_optimize_io_stats(&args.input, decision.input)?;
     if emit_logs {
         println!("Prune steps");
         println!("- Parsing style file");
@@ -757,7 +772,6 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
             )?;
             if emit_logs {
                 println!("- Writing output file to {}", output_path.display());
-                print_prune_summary(&stats);
             }
             stats
         }
@@ -775,7 +789,6 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
             )?;
             if emit_logs {
                 println!("- Writing output file to {}", output_path.display());
-                print_prune_summary(&stats);
             }
             stats
         }
@@ -783,7 +796,11 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
             anyhow::bail!("v0.0.47 only supports matching input/output formats for optimize");
         }
     };
+    let output_stats = collect_optimize_io_stats(&output_path, decision.output)?;
+    let optimization = build_optimization_summary(&input_stats, &output_stats, &stats);
+    let details = build_optimize_details(&stats);
     if emit_logs {
+        print_optimize_summary(&input_stats, &output_stats, &optimization, &details);
         println!(
             "optimize: input={} output={}",
             args.input.display(),
@@ -791,9 +808,10 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
         );
     } else {
         let report = OptimizeReport {
-            input: args.input.display().to_string(),
-            output: output_path.display().to_string(),
-            stats,
+            input: input_stats,
+            output: output_stats,
+            optimization,
+            details,
         };
         match report_format {
             ReportFormat::Text => {}
@@ -810,9 +828,47 @@ fn run_optimize(args: vt_optimizer::cli::OptimizeArgs) -> Result<()> {
 
 #[derive(Serialize)]
 struct OptimizeReport {
-    input: String,
-    output: String,
-    stats: PruneStats,
+    input: OptimizeIoStats,
+    output: OptimizeIoStats,
+    optimization: OptimizationSummary,
+    details: OptimizeDetails,
+}
+
+#[derive(Serialize)]
+struct OptimizeIoStats {
+    path: String,
+    tile_count: u64,
+    total_tile_size_bytes: u64,
+    file_size_bytes: u64,
+    total_features: u64,
+    total_vertices: u64,
+}
+
+#[derive(Serialize)]
+struct OptimizationWarnings {
+    unknown_filter_expressions: usize,
+    duplicate_feature_ids: u64,
+}
+
+#[derive(Serialize)]
+struct OptimizationSummary {
+    total_tile_size_reduction_bytes: u64,
+    total_tile_size_reduction_percent: f64,
+    file_size_reduction_bytes: u64,
+    file_size_reduction_percent: f64,
+    features_removed: u64,
+    features_kept: u64,
+    feature_change_percent: f64,
+    vertices_removed: u64,
+    vertex_change_percent: f64,
+    warnings: OptimizationWarnings,
+}
+
+#[derive(Serialize)]
+struct OptimizeDetails {
+    removed_features_by_zoom: BTreeMap<u8, u64>,
+    removed_layers_by_zoom: BTreeMap<String, Vec<u8>>,
+    unknown_filters_by_layer: BTreeMap<String, u64>,
 }
 
 fn emphasize_section_heading(line: &str) -> String {
@@ -845,6 +901,7 @@ fn emphasize_table_header(line: &str) -> String {
     if line.trim_start().starts_with("range")
         || line.trim_start().starts_with("zoom")
         || line.trim_start().starts_with("name")
+        || line.trim_start().starts_with("metric")
         || line.trim_start().starts_with("# of")
     {
         Color::Cyan.bold().paint(line).to_string()
@@ -852,23 +909,246 @@ fn emphasize_table_header(line: &str) -> String {
         line.to_string()
     }
 }
-fn print_prune_summary(stats: &PruneStats) {
-    println!("Summary");
-    if stats.removed_features_by_zoom.is_empty() {
-        println!("- Removed features: none");
+
+fn collect_optimize_io_stats(
+    path: &std::path::Path,
+    format: vt_optimizer::format::TileFormat,
+) -> Result<OptimizeIoStats> {
+    let file_size_bytes = fs::metadata(path)
+        .with_context(|| format!("failed to read file size: {}", path.display()))?
+        .len();
+    let options = InspectOptions {
+        no_progress: true,
+        include_layer_list: true,
+        ..InspectOptions::default()
+    };
+    let report = match format {
+        vt_optimizer::format::TileFormat::Mbtiles => inspect_mbtiles_with_options(path, options)?,
+        vt_optimizer::format::TileFormat::Pmtiles => inspect_pmtiles_with_options(path, &options)?,
+    };
+    let totals = vt_optimizer::output::summarize_file_layers(&report.file_layers);
+    Ok(OptimizeIoStats {
+        path: path.display().to_string(),
+        tile_count: report.overall.tile_count,
+        total_tile_size_bytes: report.overall.total_bytes,
+        file_size_bytes,
+        total_features: totals.map(|t| t.feature_count).unwrap_or(0),
+        total_vertices: totals.map(|t| t.vertex_count).unwrap_or(0),
+    })
+}
+
+fn build_optimize_details(stats: &PruneStats) -> OptimizeDetails {
+    let removed_layers_by_zoom = stats
+        .removed_layers_by_zoom
+        .iter()
+        .map(|(layer, zooms)| (layer.clone(), zooms.iter().copied().collect()))
+        .collect();
+    OptimizeDetails {
+        removed_features_by_zoom: stats.removed_features_by_zoom.clone(),
+        removed_layers_by_zoom,
+        unknown_filters_by_layer: stats.unknown_filters_by_layer.clone(),
+    }
+}
+
+fn build_optimization_summary(
+    input: &OptimizeIoStats,
+    output: &OptimizeIoStats,
+    stats: &PruneStats,
+) -> OptimizationSummary {
+    let total_tile_size_reduction_bytes = input
+        .total_tile_size_bytes
+        .saturating_sub(output.total_tile_size_bytes);
+    let total_tile_size_reduction_percent =
+        percent_reduction(input.total_tile_size_bytes, output.total_tile_size_bytes);
+    let file_size_reduction_bytes = input.file_size_bytes.saturating_sub(output.file_size_bytes);
+    let file_size_reduction_percent =
+        percent_reduction(input.file_size_bytes, output.file_size_bytes);
+    let features_removed = input.total_features.saturating_sub(output.total_features);
+    let vertices_removed = input.total_vertices.saturating_sub(output.total_vertices);
+    OptimizationSummary {
+        total_tile_size_reduction_bytes,
+        total_tile_size_reduction_percent,
+        file_size_reduction_bytes,
+        file_size_reduction_percent,
+        features_removed,
+        features_kept: output.total_features,
+        feature_change_percent: percent_change(output.total_features, input.total_features),
+        vertices_removed,
+        vertex_change_percent: percent_change(output.total_vertices, input.total_vertices),
+        warnings: OptimizationWarnings {
+            unknown_filter_expressions: stats.unknown_filters,
+            duplicate_feature_ids: 0,
+        },
+    }
+}
+
+fn percent_reduction(before: u64, after: u64) -> f64 {
+    if before == 0 {
+        return 0.0;
+    }
+    let before = before as f64;
+    let after = after as f64;
+    ((before - after) / before) * 100.0
+}
+
+fn percent_change(after: u64, before: u64) -> f64 {
+    if before == 0 {
+        return 0.0;
+    }
+    let before = before as f64;
+    let after = after as f64;
+    ((after - before) / before) * 100.0
+}
+
+fn print_optimize_summary(
+    input: &OptimizeIoStats,
+    output: &OptimizeIoStats,
+    optimization: &OptimizationSummary,
+    details: &OptimizeDetails,
+) {
+    println!("{}", emphasize_section_heading("## Summary"));
+    let tile_diff = signed_count_diff(input.tile_count, output.tile_count);
+    let tile_diff_label = format!(
+        "{} ({:.2}%)",
+        format_signed_count(tile_diff),
+        percent_change(output.tile_count, input.tile_count)
+    );
+    let tile_size_diff =
+        signed_byte_diff(input.total_tile_size_bytes, output.total_tile_size_bytes);
+    let tile_size_diff_label = format!(
+        "{} ({:.2}%)",
+        format_signed_bytes(tile_size_diff),
+        percent_change(output.total_tile_size_bytes, input.total_tile_size_bytes)
+    );
+    let file_size_diff = signed_byte_diff(input.file_size_bytes, output.file_size_bytes);
+    let file_size_diff_label = format!(
+        "{} ({:.2}%)",
+        format_signed_bytes(file_size_diff),
+        percent_change(output.file_size_bytes, input.file_size_bytes)
+    );
+    let feature_diff = signed_count_diff(input.total_features, output.total_features);
+    let feature_diff_label = format!(
+        "{} ({:.2}%)",
+        format_signed_count(feature_diff),
+        percent_change(output.total_features, input.total_features)
+    );
+    let vertex_diff = signed_count_diff(input.total_vertices, output.total_vertices);
+    let vertex_diff_label = format!(
+        "{} ({:.2}%)",
+        format_signed_count(vertex_diff),
+        percent_change(output.total_vertices, input.total_vertices)
+    );
+    let rows = vec![
+        (
+            "Tiles",
+            input.tile_count.to_string(),
+            output.tile_count.to_string(),
+            tile_diff_label,
+        ),
+        (
+            "Total tile size",
+            format_bytes(input.total_tile_size_bytes),
+            format_bytes(output.total_tile_size_bytes),
+            tile_size_diff_label,
+        ),
+        (
+            "File size",
+            format_bytes(input.file_size_bytes),
+            format_bytes(output.file_size_bytes),
+            file_size_diff_label,
+        ),
+        (
+            "Features",
+            input.total_features.to_string(),
+            output.total_features.to_string(),
+            feature_diff_label,
+        ),
+        (
+            "Vertices",
+            input.total_vertices.to_string(),
+            output.total_vertices.to_string(),
+            vertex_diff_label,
+        ),
+    ];
+    let metric_width = rows
+        .iter()
+        .map(|(label, _, _, _)| label.len())
+        .max()
+        .unwrap_or(6)
+        .max("metric".len());
+    let input_width = rows
+        .iter()
+        .map(|(_, val, _, _)| val.len())
+        .max()
+        .unwrap_or(5)
+        .max("input".len());
+    let output_width = rows
+        .iter()
+        .map(|(_, _, val, _)| val.len())
+        .max()
+        .unwrap_or(6)
+        .max("output".len());
+    let diff_width = rows
+        .iter()
+        .map(|(_, _, _, val)| val.len())
+        .max()
+        .unwrap_or(4)
+        .max("diff".len());
+    let header = format!(
+        "{}  {}  {}  {}",
+        pad_right("metric", metric_width),
+        pad_left("input", input_width),
+        pad_left("output", output_width),
+        pad_left("diff", diff_width)
+    );
+    println!();
+    println!("{}", emphasize_table_header(&header));
+    for (label, input_val, output_val, diff_val) in rows {
+        println!(
+            "{}  {}  {}  {}",
+            pad_right(label, metric_width),
+            pad_left(&input_val, input_width),
+            pad_left(&output_val, output_width),
+            pad_left(&diff_val, diff_width)
+        );
+    }
+    println!();
+    if optimization.warnings.unknown_filter_expressions > 0 {
+        println!();
+        println!(
+            "{}",
+            format_summary_label(
+                "Unknown filter expressions kept",
+                optimization.warnings.unknown_filter_expressions
+            )
+        );
+    }
+    if details.removed_features_by_zoom.is_empty() {
+        println!("{}", format_summary_label("Removed features", "none"));
     } else {
-        let total_removed: u64 = stats.removed_features_by_zoom.values().sum();
-        println!("- Removed features total: {}", total_removed);
-        println!("- Removed features by zoom:");
-        for (zoom, count) in stats.removed_features_by_zoom.iter() {
+        let total_removed: u64 = details.removed_features_by_zoom.values().sum();
+        println!(
+            "{}",
+            format_summary_label("Removed features total", total_removed)
+        );
+        println!(
+            "- {}:",
+            Style::new()
+                .fg(Color::Blue)
+                .paint("Removed features by zoom")
+        );
+        for (zoom, count) in details.removed_features_by_zoom.iter() {
             println!("  z{:02}: {}", zoom, count);
         }
     }
-    if stats.removed_layers_by_zoom.is_empty() {
-        println!("- Removed layers: none");
+    if details.removed_layers_by_zoom.is_empty() {
+        println!("{}", format_summary_label("Removed layers", "none"));
     } else {
-        println!("- Removed layers:");
-        for (layer, zooms) in stats.removed_layers_by_zoom.iter() {
+        println!(
+            "- {}:",
+            Style::new().fg(Color::Blue).paint("Removed layers")
+        );
+        for (layer, zooms) in details.removed_layers_by_zoom.iter() {
             let zoom_list = zooms
                 .iter()
                 .map(|z| z.to_string())
@@ -877,14 +1157,79 @@ fn print_prune_summary(stats: &PruneStats) {
             println!("  {} @ z{}", layer, zoom_list);
         }
     }
-    if stats.unknown_filters > 0 {
+    if !details.unknown_filters_by_layer.is_empty() {
         println!(
-            "- Unknown filter expressions kept: {}",
-            stats.unknown_filters
+            "- {}:",
+            Style::new()
+                .fg(Color::Blue)
+                .paint("Unknown filter expressions by layer")
         );
-        println!("- Unknown filter expressions by layer:");
-        for (layer, count) in stats.unknown_filters_by_layer.iter() {
+        for (layer, count) in details.unknown_filters_by_layer.iter() {
             println!("  {}: {}", layer, count);
         }
+    }
+}
+
+fn signed_count_diff(before: u64, after: u64) -> i64 {
+    after as i64 - before as i64
+}
+
+fn signed_byte_diff(before: u64, after: u64) -> i64 {
+    after as i64 - before as i64
+}
+
+fn format_signed_count(value: i64) -> String {
+    if value < 0 {
+        format!("-{}", value.abs())
+    } else {
+        format!("+{}", value)
+    }
+}
+
+fn format_signed_bytes(value: i64) -> String {
+    if value < 0 {
+        format!("-{}", format_bytes(value.unsigned_abs()))
+    } else {
+        format!("+{}", format_bytes(value as u64))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optimization_summary_computes_deltas() {
+        let input = OptimizeIoStats {
+            path: "input.mbtiles".to_string(),
+            tile_count: 10,
+            total_tile_size_bytes: 1000,
+            file_size_bytes: 1500,
+            total_features: 100,
+            total_vertices: 1000,
+        };
+        let output = OptimizeIoStats {
+            path: "output.mbtiles".to_string(),
+            tile_count: 8,
+            total_tile_size_bytes: 700,
+            file_size_bytes: 900,
+            total_features: 60,
+            total_vertices: 750,
+        };
+        let stats = PruneStats {
+            unknown_filters: 2,
+            ..PruneStats::default()
+        };
+        let summary = build_optimization_summary(&input, &output, &stats);
+        assert_eq!(summary.total_tile_size_reduction_bytes, 300);
+        assert_eq!(summary.file_size_reduction_bytes, 600);
+        assert_eq!(summary.features_removed, 40);
+        assert_eq!(summary.features_kept, 60);
+        assert_eq!(summary.vertices_removed, 250);
+        assert!((summary.total_tile_size_reduction_percent - 30.0).abs() < 0.01);
+        assert!((summary.file_size_reduction_percent - 40.0).abs() < 0.01);
+        assert!((summary.feature_change_percent + 40.0).abs() < 0.01);
+        assert!((summary.vertex_change_percent + 25.0).abs() < 0.01);
+        assert_eq!(summary.warnings.unknown_filter_expressions, 2);
     }
 }

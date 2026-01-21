@@ -1,6 +1,6 @@
 [package]
 name = "vt-optimizer-rs"
-version = "0.4.7"
+version = "0.5.0"
 edition = "2024"
 license = "MIT"
 description = "A fast CLI to inspect and optimize MBTiles/PMTiles vector tiles."
@@ -45,6 +45,7 @@ mvt = "0.10.3"
 protobuf = "3.7"
 geo-types = "0.7"
 crossbeam-channel = "0.5"
+rayon = "1"
 
 [dev-dependencies]
 
