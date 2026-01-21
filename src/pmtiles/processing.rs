@@ -1,257 +1,32 @@
-use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap, HashSet};
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::Path;
-use std::time::Duration;
 
+use crate::mbtiles::{
+    HistogramBucket, InspectOptions, MbtilesReport, MbtilesZoomStats, TileListOptions,
+    TileSort, TopTile, ZoomHistogram, count_vertices, encode_tile_payload, format_property_value,
+    prune_tile_layers, simplify_tile_payload, PruneStats,
+};
+use crate::pmtiles::{
+    algo::{
+        decode_directory, encode_directory, histogram_bucket_index_pmtiles, splitmix64,
+        tile_id_from_xyz, tile_id_to_xyz, build_header,
+    },
+    types::{Entry, Header, ProgressTracker, HEADER_SIZE, MAGIC, VERSION},
+    LayerAccum, StatAccum, build_header_with_metadata, progress_for_phase,
+};
 use anyhow::{Context, Result};
 use brotli::{CompressorWriter, Decompressor};
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
-use hilbert_2d::{Variant, h2xy_discrete, xy2h_discrete};
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use mvt_reader::Reader;
 use rusqlite::Connection;
 use serde_json::Value;
-use varint_rs::{VarintReader, VarintWriter};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, HashSet};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::Path;
 
-use crate::mbtiles::{
-    HistogramBucket, InspectOptions, MbtilesReport, MbtilesStats, MbtilesZoomStats, PruneStats,
-    SimplifyStats, TileCoord, TileListOptions, TileSort, TopTile, ZoomHistogram, count_vertices,
-    encode_tile_payload, format_property_value, prune_tile_layers, simplify_tile_payload,
-};
-
-const HEADER_SIZE: usize = 127;
-const MAGIC: &[u8; 7] = b"PMTiles";
-const VERSION: u8 = 3;
-const EMPTY_TILE_MAX_BYTES: u64 = 50;
-
-fn histogram_bucket_index_pmtiles(
-    value: u64,
-    min_len: Option<u64>,
-    max_len: Option<u64>,
-    buckets: usize,
-) -> Option<usize> {
-    if buckets == 0 {
-        return None;
-    }
-    let min_len = min_len?;
-    let max_len = max_len?;
-    if min_len > max_len {
-        return None;
-    }
-    let range = (max_len - min_len).max(1);
-    let bucket_size = ((range as f64) / buckets as f64).ceil() as u64;
-    let mut bucket = ((value.saturating_sub(min_len)) / bucket_size) as usize;
-    if bucket >= buckets {
-        bucket = buckets - 1;
-    }
-    Some(bucket)
-}
-
-fn make_progress_bar(total: u64) -> ProgressBar {
-    let bar = ProgressBar::with_draw_target(Some(total), ProgressDrawTarget::stderr_with_hz(10));
-    bar.set_style(
-        ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} {msg}")
-            .unwrap()
-            .progress_chars("=>-"),
-    );
-    bar.enable_steady_tick(Duration::from_millis(200));
-    bar
-}
-
-fn make_spinner(message: &str) -> ProgressBar {
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_draw_target(ProgressDrawTarget::stderr_with_hz(20));
-    spinner.set_style(
-        ProgressStyle::with_template("{spinner:.cyan} {msg} ({pos} tiles processed)")
-            .unwrap()
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-    );
-    spinner.set_message(message.to_string());
-    spinner.enable_steady_tick(Duration::from_millis(80));
-    spinner
-}
-
-struct ProgressTracker {
-    bar: ProgressBar,
-    total: u64,
-    is_bar: bool,
-    processed: u64,
-}
-
-impl ProgressTracker {
-    fn new(message: &str, total: u64, use_bar: bool) -> Self {
-        let bar = if use_bar && total > 0 {
-            let bar = make_progress_bar(total);
-            bar.set_message(message.to_string());
-            bar
-        } else {
-            make_spinner(message)
-        };
-        Self {
-            bar,
-            total,
-            is_bar: use_bar && total > 0,
-            processed: 0,
-        }
-    }
-
-    fn inc(&mut self, delta: u64) {
-        self.processed = self.processed.saturating_add(delta);
-        if self.is_bar {
-            let cap = self.total.saturating_sub(1);
-            let pos = self.processed.min(cap);
-            self.bar.set_position(pos);
-        } else {
-            self.bar.inc(delta);
-        }
-    }
-
-    fn finish(self) {
-        if self.is_bar {
-            self.bar.set_position(self.total);
-        }
-        self.bar.finish_and_clear();
-    }
-}
-
-fn progress_for_phase(
-    message: &str,
-    total: u64,
-    use_bar: bool,
-    no_progress: bool,
-) -> Option<ProgressTracker> {
-    if no_progress {
-        None
-    } else {
-        Some(ProgressTracker::new(message, total, use_bar))
-    }
-}
-#[derive(Debug, Clone)]
-struct Header {
-    root_offset: u64,
-    root_length: u64,
-    metadata_offset: u64,
-    metadata_length: u64,
-    leaf_offset: u64,
-    leaf_length: u64,
-    data_offset: u64,
-    data_length: u64,
-    n_addressed_tiles: u64,
-    n_tile_entries: u64,
-    n_tile_contents: u64,
-    clustered: u8,
-    internal_compression: u8,
-    tile_compression: u8,
-    tile_type: u8,
-    min_zoom: u8,
-    max_zoom: u8,
-    min_longitude: i32,
-    min_latitude: i32,
-    max_longitude: i32,
-    max_latitude: i32,
-    center_zoom: u8,
-    center_longitude: i32,
-    center_latitude: i32,
-}
-
-#[derive(Debug, Clone)]
-struct Entry {
-    tile_id: u64,
-    offset: u64,
-    length: u32,
-    run_length: u32,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct StatAccum {
-    tile_count: u64,
-    total_bytes: u64,
-    max_bytes: u64,
-}
-
-struct LayerAccum {
-    feature_count: u64,
-    vertex_count: u64,
-    property_keys: HashSet<String>,
-    property_values: HashSet<String>,
-}
-
-impl StatAccum {
-    fn add_tile(&mut self, length: u64) {
-        self.tile_count += 1;
-        self.total_bytes += length;
-        self.max_bytes = self.max_bytes.max(length);
-    }
-
-    fn into_stats(self) -> MbtilesStats {
-        let avg_bytes = if self.tile_count == 0 {
-            0
-        } else {
-            self.total_bytes / self.tile_count
-        };
-        MbtilesStats {
-            tile_count: self.tile_count,
-            total_bytes: self.total_bytes,
-            max_bytes: self.max_bytes,
-            avg_bytes,
-        }
-    }
-}
-
-fn ensure_pmtiles_path(path: &Path) -> Result<()> {
-    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-    if ext.eq_ignore_ascii_case("pmtiles") {
-        Ok(())
-    } else {
-        anyhow::bail!("only .pmtiles paths are supported in v0.0.3");
-    }
-}
-
-fn ensure_mbtiles_path(path: &Path) -> Result<()> {
-    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
-    if ext.eq_ignore_ascii_case("mbtiles") {
-        Ok(())
-    } else {
-        anyhow::bail!("only .mbtiles paths are supported in v0.0.3");
-    }
-}
-
-fn tile_id_from_xyz(z: u8, x: u32, y: u32) -> u64 {
-    if z == 0 {
-        return 0;
-    }
-    let order = z as usize;
-    let hilbert = xy2h_discrete(x as usize, y as usize, order, Variant::Hilbert) as u64;
-    let base_id = (pow4(z) - 1) / 3;
-    base_id + hilbert
-}
-
-fn tile_id_to_xyz(tile_id: u64) -> (u8, u32, u32) {
-    if tile_id == 0 {
-        return (0, 0, 0);
-    }
-    let mut z = 1u8;
-    loop {
-        let base_id = (pow4(z) - 1) / 3;
-        let next_base = (pow4(z + 1) - 1) / 3;
-        if tile_id < next_base {
-            let idx = tile_id - base_id;
-            let (x, y) = h2xy_discrete(idx as usize, z as usize, Variant::Hilbert);
-            return (z, x as u32, y as u32);
-        }
-        z += 1;
-    }
-}
-
-fn pow4(z: u8) -> u64 {
-    1u64 << (2 * (z as u64))
-}
-
-fn include_sample(index: u64, total: u64, sample: Option<&crate::mbtiles::SampleSpec>) -> bool {
+pub fn include_sample(index: u64, total: u64, sample: Option<&crate::mbtiles::SampleSpec>) -> bool {
     match sample {
         None => true,
         Some(crate::mbtiles::SampleSpec::Count(count)) => index <= *count,
@@ -269,231 +44,19 @@ fn include_sample(index: u64, total: u64, sample: Option<&crate::mbtiles::Sample
     }
 }
 
-fn splitmix64(mut x: u64) -> u64 {
-    x = x.wrapping_add(0x9e3779b97f4a7c15);
-    let mut z = x;
-    z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
-    z ^ (z >> 31)
+
+pub fn read_u8(input: &mut &[u8]) -> Result<u8> {
+    if input.is_empty() {
+        anyhow::bail!("unexpected EOF");
+    }
+    let value = input[0];
+    *input = &input[1..];
+    Ok(value)
 }
 
-fn encode_directory(entries: &[Entry]) -> Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    buf.write_usize_varint(entries.len())?;
-
-    let mut last_tile_id = 0u64;
-    for entry in entries {
-        let delta = entry.tile_id - last_tile_id;
-        buf.write_u64_varint(delta)?;
-        last_tile_id = entry.tile_id;
-    }
-
-    for entry in entries {
-        buf.write_u32_varint(entry.run_length)?;
-    }
-
-    for entry in entries {
-        buf.write_u32_varint(entry.length)?;
-    }
-
-    for (idx, entry) in entries.iter().enumerate() {
-        if idx == 0 {
-            buf.write_u64_varint(entry.offset + 1)?;
-        } else {
-            let prev = &entries[idx - 1];
-            let expected = prev.offset + prev.length as u64;
-            if entry.offset == expected {
-                buf.write_u64_varint(0)?;
-            } else {
-                buf.write_u64_varint(entry.offset + 1)?;
-            }
-        }
-    }
-
-    Ok(buf)
-}
-
-fn decode_directory(mut data: &[u8]) -> Result<Vec<Entry>> {
-    let n_entries = data.read_usize_varint()?;
-    let mut entries = vec![
-        Entry {
-            tile_id: 0,
-            offset: 0,
-            length: 0,
-            run_length: 0,
-        };
-        n_entries
-    ];
-
-    let mut next_tile_id = 0u64;
-    for entry in entries.iter_mut() {
-        next_tile_id += data.read_u64_varint()?;
-        entry.tile_id = next_tile_id;
-    }
-
-    for entry in entries.iter_mut() {
-        entry.run_length = data.read_u32_varint()?;
-    }
-
-    for entry in entries.iter_mut() {
-        entry.length = data.read_u32_varint()?;
-    }
-
-    let mut last_entry: Option<Entry> = None;
-    for entry in entries.iter_mut() {
-        let offset = data.read_u64_varint()?;
-        entry.offset = if offset == 0 {
-            let prev = last_entry.as_ref().context("invalid directory entry")?;
-            prev.offset + prev.length as u64
-        } else {
-            offset - 1
-        };
-        last_entry = Some(entry.clone());
-    }
-
-    Ok(entries)
-}
-
-fn build_header(
-    root_length: u64,
-    data_length: u64,
-    tile_count: u64,
-    min_zoom: u8,
-    max_zoom: u8,
-) -> Header {
-    Header {
-        root_offset: HEADER_SIZE as u64,
-        root_length,
-        metadata_offset: 0,
-        metadata_length: 0,
-        leaf_offset: 0,
-        leaf_length: 0,
-        data_offset: HEADER_SIZE as u64 + root_length,
-        data_length,
-        n_addressed_tiles: tile_count,
-        n_tile_entries: tile_count,
-        n_tile_contents: tile_count,
-        clustered: 0,
-        internal_compression: 1,
-        tile_compression: 1,
-        tile_type: 0,
-        min_zoom,
-        max_zoom,
-        min_longitude: (-180.0 * 10_000_000.0) as i32,
-        min_latitude: (-85.0 * 10_000_000.0) as i32,
-        max_longitude: (180.0 * 10_000_000.0) as i32,
-        max_latitude: (85.0 * 10_000_000.0) as i32,
-        center_zoom: 0,
-        center_longitude: 0,
-        center_latitude: 0,
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn build_header_with_metadata(
-    root_length: u64,
-    metadata_length: u64,
-    data_length: u64,
-    tile_count: u64,
-    min_zoom: u8,
-    max_zoom: u8,
-    internal_compression: u8,
-    tile_compression: u8,
-    tile_type: u8,
-) -> Header {
-    let root_offset = HEADER_SIZE as u64;
-    let metadata_offset = if metadata_length == 0 {
-        0
-    } else {
-        root_offset + root_length
-    };
-    let data_offset = if metadata_length == 0 {
-        root_offset + root_length
-    } else {
-        metadata_offset + metadata_length
-    };
-    Header {
-        root_offset,
-        root_length,
-        metadata_offset,
-        metadata_length,
-        leaf_offset: 0,
-        leaf_length: 0,
-        data_offset,
-        data_length,
-        n_addressed_tiles: tile_count,
-        n_tile_entries: tile_count,
-        n_tile_contents: tile_count,
-        clustered: 0,
-        internal_compression,
-        tile_compression,
-        tile_type,
-        min_zoom,
-        max_zoom,
-        min_longitude: (-180.0 * 10_000_000.0) as i32,
-        min_latitude: (-85.0 * 10_000_000.0) as i32,
-        max_longitude: (180.0 * 10_000_000.0) as i32,
-        max_latitude: (85.0 * 10_000_000.0) as i32,
-        center_zoom: 0,
-        center_longitude: 0,
-        center_latitude: 0,
-    }
-}
-
-fn write_header(mut file: &File, header: &Header) -> Result<()> {
-    let mut buf = Vec::with_capacity(HEADER_SIZE);
-    buf.extend_from_slice(MAGIC);
-    buf.push(VERSION);
-
-    for value in [
-        header.root_offset,
-        header.root_length,
-        header.metadata_offset,
-        header.metadata_length,
-        header.leaf_offset,
-        header.leaf_length,
-        header.data_offset,
-        header.data_length,
-    ] {
-        buf.extend_from_slice(&value.to_le_bytes());
-    }
-
-    for value in [
-        header.n_addressed_tiles,
-        header.n_tile_entries,
-        header.n_tile_contents,
-    ] {
-        buf.extend_from_slice(&value.to_le_bytes());
-    }
-
-    buf.push(header.clustered);
-    buf.push(header.internal_compression);
-    buf.push(header.tile_compression);
-    buf.push(header.tile_type);
-    buf.push(header.min_zoom);
-    buf.push(header.max_zoom);
-    buf.extend_from_slice(&header.min_longitude.to_le_bytes());
-    buf.extend_from_slice(&header.min_latitude.to_le_bytes());
-    buf.extend_from_slice(&header.max_longitude.to_le_bytes());
-    buf.extend_from_slice(&header.max_latitude.to_le_bytes());
-    buf.push(header.center_zoom);
-    buf.extend_from_slice(&header.center_longitude.to_le_bytes());
-    buf.extend_from_slice(&header.center_latitude.to_le_bytes());
-
-    if buf.len() != HEADER_SIZE {
-        anyhow::bail!("invalid header size: {}", buf.len());
-    }
-
-    file.seek(SeekFrom::Start(0)).context("seek header")?;
-    file.write_all(&buf).context("write header")?;
-    Ok(())
-}
-
-fn read_header(mut file: &File) -> Result<Header> {
-    let mut buf = vec![0u8; HEADER_SIZE];
-    file.seek(SeekFrom::Start(0)).context("seek header")?;
-    file.read_exact(&mut buf).context("read header")?;
-
+pub fn read_header(mut x: &File) -> Result<Header> {
+    let mut buf = [0u8; HEADER_SIZE];
+    x.read_exact(&mut buf).context("read header")?;
     if &buf[0..MAGIC.len()] != MAGIC {
         anyhow::bail!("invalid PMTiles magic");
     }
@@ -566,16 +129,57 @@ fn read_header(mut file: &File) -> Result<Header> {
     })
 }
 
-fn read_u8(input: &mut &[u8]) -> Result<u8> {
-    if input.is_empty() {
-        anyhow::bail!("unexpected EOF");
+pub fn write_header(mut file: &File, header: &Header) -> Result<()> {
+    let mut buf = Vec::with_capacity(HEADER_SIZE);
+    buf.write_all(MAGIC)?;
+    buf.write_all(&[VERSION])?;
+
+    let write_u64 = |v: u64, b: &mut Vec<u8>| -> Result<()> {
+        b.write_all(&v.to_le_bytes())?;
+        Ok(())
+    };
+    let write_i32 = |v: i32, b: &mut Vec<u8>| -> Result<()> {
+        b.write_all(&v.to_le_bytes())?;
+        Ok(())
+    };
+
+    write_u64(header.root_offset, &mut buf)?;
+    write_u64(header.root_length, &mut buf)?;
+    write_u64(header.metadata_offset, &mut buf)?;
+    write_u64(header.metadata_length, &mut buf)?;
+    write_u64(header.leaf_offset, &mut buf)?;
+    write_u64(header.leaf_length, &mut buf)?;
+    write_u64(header.data_offset, &mut buf)?;
+    write_u64(header.data_length, &mut buf)?;
+    write_u64(header.n_addressed_tiles, &mut buf)?;
+    write_u64(header.n_tile_entries, &mut buf)?;
+    write_u64(header.n_tile_contents, &mut buf)?;
+
+    buf.push(header.clustered);
+    buf.push(header.internal_compression);
+    buf.push(header.tile_compression);
+    buf.push(header.tile_type);
+    buf.push(header.min_zoom);
+    buf.push(header.max_zoom);
+    write_i32(header.min_longitude, &mut buf)?;
+    write_i32(header.min_latitude, &mut buf)?;
+    write_i32(header.max_longitude, &mut buf)?;
+    write_i32(header.max_latitude, &mut buf)?;
+    buf.push(header.center_zoom);
+    write_i32(header.center_longitude, &mut buf)?;
+    write_i32(header.center_latitude, &mut buf)?;
+
+    // Pad to HEADER_SIZE
+    while buf.len() < HEADER_SIZE {
+        buf.push(0);
     }
-    let value = input[0];
-    *input = &input[1..];
-    Ok(value)
+
+    file.seek(SeekFrom::Start(0))?;
+    file.write_all(&buf)?;
+    Ok(())
 }
 
-fn read_metadata_section(mut file: &File, header: &Header) -> Result<BTreeMap<String, String>> {
+pub fn read_metadata_section(mut file: &File, header: &Header) -> Result<BTreeMap<String, String>> {
     if header.metadata_length == 0 {
         return Ok(BTreeMap::new());
     }
@@ -600,7 +204,7 @@ fn read_metadata_section(mut file: &File, header: &Header) -> Result<BTreeMap<St
     Ok(metadata)
 }
 
-fn decode_internal_bytes(data: Vec<u8>, internal_compression: u8) -> Result<Vec<u8>> {
+pub fn decode_internal_bytes(data: Vec<u8>, internal_compression: u8) -> Result<Vec<u8>> {
     if data.starts_with(&[0x1f, 0x8b]) {
         let mut decoder = GzDecoder::new(data.as_slice());
         let mut decoded = Vec::new();
@@ -635,7 +239,7 @@ fn decode_internal_bytes(data: Vec<u8>, internal_compression: u8) -> Result<Vec<
     }
 }
 
-fn encode_internal_bytes(data: &[u8], internal_compression: u8) -> Result<Vec<u8>> {
+pub fn encode_internal_bytes(data: &[u8], internal_compression: u8) -> Result<Vec<u8>> {
     match internal_compression {
         0 => Ok(data.to_vec()),
         1 => {
@@ -659,7 +263,7 @@ fn encode_internal_bytes(data: &[u8], internal_compression: u8) -> Result<Vec<u8
     }
 }
 
-fn decode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<u8>> {
+pub fn decode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<u8>> {
     if data.starts_with(&[0x1f, 0x8b]) {
         let mut decoder = GzDecoder::new(data);
         let mut decoded = Vec::new();
@@ -683,7 +287,7 @@ fn decode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<
     }
 }
 
-fn encode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<u8>> {
+pub fn encode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<u8>> {
     match tile_compression {
         0 => Ok(data.to_vec()),
         1 => encode_tile_payload(data, true),
@@ -699,7 +303,7 @@ fn encode_tile_payload_pmtiles(data: &[u8], tile_compression: u8) -> Result<Vec<
     }
 }
 
-fn read_directory_section(
+pub fn read_directory_section(
     mut file: &File,
     header: &Header,
     offset: u64,
@@ -717,7 +321,7 @@ fn read_directory_section(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn accumulate_tile_counts(
+pub fn accumulate_tile_counts(
     file: &File,
     header: &Header,
     entries: &[Entry],
@@ -779,7 +383,7 @@ fn accumulate_tile_counts(
             if max_tile_bytes > 0 && length > max_tile_bytes {
                 *over_limit_tiles += 1;
             }
-            if length <= EMPTY_TILE_MAX_BYTES {
+            if length <= crate::mbtiles::EMPTY_TILE_MAX_BYTES {
                 *empty_tiles += 1;
             }
             *min_len = Some(min_len.map_or(length, |min| min.min(length)));
@@ -800,7 +404,7 @@ fn accumulate_tile_counts(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_histogram_from_entries(
+pub fn build_histogram_from_entries(
     file: &File,
     header: &Header,
     entries: &[Entry],
@@ -917,7 +521,7 @@ fn build_histogram_from_entries(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn build_zoom_histograms_from_entries(
+pub fn build_zoom_histograms_from_entries(
     file: &File,
     header: &Header,
     entries: &[Entry],
@@ -1072,7 +676,7 @@ fn build_zoom_histograms_from_entries(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn collect_top_tiles_from_entries(
+pub fn collect_top_tiles_from_entries(
     file: &File,
     header: &Header,
     entries: &[Entry],
@@ -1165,7 +769,7 @@ fn collect_top_tiles_from_entries(
     Ok((top_tiles, bucket_tiles))
 }
 
-fn build_file_layer_list_pmtiles(
+pub fn build_file_layer_list_pmtiles(
     mut file: &File,
     header: &Header,
     entries: &[Entry],
@@ -1261,6 +865,24 @@ fn build_file_layer_list_pmtiles(
         .collect::<Vec<_>>();
     result.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(result)
+}
+
+pub fn ensure_pmtiles_path(path: &Path) -> Result<()> {
+    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    if ext.eq_ignore_ascii_case("pmtiles") {
+        Ok(())
+    } else {
+        anyhow::bail!("only .pmtiles paths are supported in v0.0.3");
+    }
+}
+
+pub fn ensure_mbtiles_path(path: &Path) -> Result<()> {
+    let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
+    if ext.eq_ignore_ascii_case("mbtiles") {
+        Ok(())
+    } else {
+        anyhow::bail!("only .mbtiles paths are supported");
+    }
 }
 
 pub fn inspect_pmtiles_with_options(
@@ -1595,22 +1217,20 @@ pub fn prune_pmtiles_layer_only(
         header.tile_type,
     );
 
-    let file = File::create(output)
+    let mut file = File::create(output)
         .with_context(|| format!("failed to create output pmtiles: {}", output.display()))?;
-    write_header(&file, &header)?;
-
-    let mut file = file;
+    write_header(&file, &header).context("write header")?;
     file.seek(SeekFrom::Start(header.root_offset))
         .context("seek root directory")?;
     file.write_all(&dir_section)
         .context("write root directory")?;
 
-    if !metadata_bytes.is_empty() {
+    if header.metadata_length > 0 {
         file.seek(SeekFrom::Start(header.metadata_offset))
             .context("seek metadata")?;
-        file.write_all(&metadata_bytes).context("write metadata")?;
+        file.write_all(&metadata_bytes)
+            .context("write metadata")?;
     }
-
     file.seek(SeekFrom::Start(header.data_offset))
         .context("seek data")?;
     file.write_all(&data_section).context("write data")?;
@@ -1621,10 +1241,10 @@ pub fn prune_pmtiles_layer_only(
 pub fn simplify_pmtiles_tile(
     input: &Path,
     output: &Path,
-    coord: TileCoord,
+    coord: crate::mbtiles::TileCoord,
     layers: &[String],
     tolerance: Option<f64>,
-) -> Result<SimplifyStats> {
+) -> Result<crate::mbtiles::SimplifyStats> {
     ensure_pmtiles_path(input)?;
     ensure_pmtiles_path(output)?;
 
@@ -1752,10 +1372,10 @@ pub fn mbtiles_to_pmtiles(input: &Path, output: &Path) -> Result<()> {
     let mut min_zoom = u8::MAX;
     let mut max_zoom = u8::MIN;
     while let Some(row) = rows.next().context("read tile row")? {
-        let z: u8 = row.get(0)?;
-        let x: u32 = row.get(1)?;
-        let y: u32 = row.get(2)?;
-        let data: Vec<u8> = row.get(3)?;
+        let z: u8 = row.get::<_, u8>(0)?;
+        let x: u32 = row.get::<_, u32>(1)?;
+        let y: u32 = row.get::<_, u32>(2)?;
+        let data: Vec<u8> = row.get::<_, Vec<u8>>(3)?;
         min_zoom = min_zoom.min(z);
         max_zoom = max_zoom.max(z);
         let tile_id = tile_id_from_xyz(z, x, y);
@@ -1779,13 +1399,22 @@ pub fn mbtiles_to_pmtiles(input: &Path, output: &Path) -> Result<()> {
     }
 
     let dir_bytes = encode_directory(&entries)?;
-    let header = build_header(
+    let mut header = build_header(
         dir_bytes.len() as u64,
         data_section.len() as u64,
         entries.len() as u64,
         if min_zoom == u8::MAX { 0 } else { min_zoom },
         if max_zoom == u8::MIN { 0 } else { max_zoom },
     );
+
+    if let Some((_, first_data)) = tiles.first() {
+        if first_data.starts_with(&[0x1f, 0x8b]) {
+            header.tile_compression = 1;
+        } else {
+            header.tile_compression = 0;
+        }
+    }
+    header.internal_compression = 0;
 
     let file = File::create(output)
         .with_context(|| format!("failed to create output pmtiles: {}", output.display()))?;
